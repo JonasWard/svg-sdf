@@ -356,3 +356,8 @@ input[type='color'] {
   border: 3px dashed var(--accent);
   pointer-events: none;
 }
+
+.control.stacked select {
+  width: 100%;
+  padding: 4px 6px;
+}

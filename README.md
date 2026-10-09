@@ -17,10 +17,15 @@ Every push to the default branch is tested, built and published to GitHub Pages 
    - **exact** (default): curves stay cubic Béziers. They are split into pieces monotone in x and y, and distances are measured to the true curve, so the direction to the nearest edge varies smoothly along it.
    - **polyline**: curves are flattened to within a fraction of a buffer pixel. This is cheaper, but the direction is constant along each straight piece, which shows up as bands in polar mode.
 2. **Distance** (`src/lib/sdf`): for each buffer pixel centre:
-   - the exact distance to the nearest edge (line or curve piece), found through a BVH, under one of three metrics:
+   - the exact distance to the nearest edge (line or curve piece), found through a BVH. Every metric is a gauge distance d(p, q) = γ(A(q − p)). γ is one of five unit shapes:
      - **Euclidean**: the straight-line distance, with rounded iso-lines.
      - **Manhattan** (L1): the sum of the x and y offsets, with diamond iso-lines.
-     - **Chebyshev** (L∞): the larger of the two offsets, with square iso-lines. It is computed as half the Manhattan distance in coordinates rotated by 45°.
+     - **Chebyshev** (L∞): the larger of the two offsets, with square iso-lines.
+     - **Lp**: for 1 < p < ∞, morphing from the diamond through the circle to the square.
+     - **Polygon**: a regular n-gon with apothem 1, with polygonal iso-lines. Odd n gives a direction-dependent distance.
+
+     A rotates and stretches the unit shape, for any kind. A rotated Manhattan or Chebyshev grid, or elliptical distance, comes from the same setting. A is applied to the geometry once, so each search only deals with the bare shape; Chebyshev is half the Manhattan distance in coordinates rotated by 45°.
+
    - the sign, from a scanline inside test that honours `nonzero` and `evenodd`;
    - the vector to the nearest edge point;
    - the shape id.

@@ -6,7 +6,6 @@ import fragmentSource from './shaders/post.frag.glsl?raw';
 
 const MODE_INDEX = { ramp: 0, polar: 1, shape: 2, grayscale: 3 } as const;
 const PALETTE_INDEX = { hsv: 0, oklch: 1, gradient: 2 } as const;
-const METRIC_INDEX = { euclidean: 0, manhattan: 1, chebyshev: 2 } as const;
 const RAMP_SAMPLES = 256;
 const COLORS_WIDTH = 1024;
 
@@ -39,7 +38,6 @@ const UNIFORMS = [
   'uTileAngleBands',
   'uTileSpacing',
   'uTileContrast',
-  'uMetric',
   'uShapeRange',
   'uShadeInside',
   'uFadeOutside',
@@ -342,7 +340,6 @@ export class SdfRenderer {
     gl.uniform1f(u.uTileAngleBands, Math.max(1, Math.round(p.tiles.angleBands)));
     gl.uniform1f(u.uTileSpacing, p.tiles.distanceSpacing * unit);
     gl.uniform1f(u.uTileContrast, p.tiles.contrast);
-    gl.uniform1i(u.uMetric, METRIC_INDEX[sdf.metric ?? 'euclidean']);
 
     gl.uniform1f(u.uShapeRange, s.shape.range * unit);
     gl.uniform1f(u.uShadeInside, s.shape.shadeInside);

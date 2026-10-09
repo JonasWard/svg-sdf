@@ -1,8 +1,19 @@
-import { Bounds, FillRule, Metric, RGBA, Scene, SDF_STRIDE, SdfBuffer, SdfLayout } from '../types';
+import {
+  Bounds,
+  FillRule,
+  MetricKind,
+  MetricSpec,
+  RGBA,
+  Scene,
+  SDF_STRIDE,
+  SdfBuffer,
+  SdfLayout,
+  toMetricSpec
+} from '../types';
 import { crossingX } from './bezier';
 import { Nearest, SegmentBvh } from './bvh';
 import { EDGE_LINE, EDGE_STRIDE, Edges, packEdges } from './edges';
-import { toChebyshevEdges } from './metrics';
+import { metricSetup, MetricSetup, transformEdges } from './metrics';
 
 export interface SdfOptions {
   /** buffer width in pixels, the height follows from the aspect ratio of the region */
@@ -11,8 +22,8 @@ export interface SdfOptions {
   padding?: number;
   /** overrides the svg bounds as the area to cover, before padding */
   region?: Bounds;
-  /** how distances are measured, euclidean by default */
-  metric?: Metric;
+  /** how distances are measured, euclidean by default; a bare kind uses the default shape settings */
+  metric?: MetricSpec | MetricKind;
 }
 
 /** the pixel grid a buffer of `options.width` covers, with square pixels centred on the padded bounds */
@@ -32,11 +43,11 @@ export const computeLayout = (bounds: Bounds, options: SdfOptions): SdfLayout =>
 
 /** everything the per-row work needs, built once per scene (and once per worker) */
 export interface PreparedScene {
-  metric: Metric;
+  metric: MetricSetup;
   segments: Edges;
-  /** over the edges as they are, or rotated by 45° for chebyshev queries */
+  /** over the edges mapped into the metric's search space */
   bvh: SegmentBvh;
-  /** shape owning each edge the hierarchy holds, its edges differ from `segments` for chebyshev */
+  /** shape owning each edge the hierarchy holds, its edges differ from `segments` when the search space is mapped */
   nearestShape: Int32Array;
   fillRules: FillRule[];
   /** filled segments ordered by their top y, for the scanline inside test */
@@ -45,7 +56,7 @@ export interface PreparedScene {
   bottom: Float64Array;
 }
 
-export const prepareScene = (scene: Scene, metric: Metric = 'euclidean'): PreparedScene => {
+export const prepareScene = (scene: Scene, spec: MetricSpec | MetricKind = 'euclidean'): PreparedScene => {
   const segments = packEdges(scene);
   const c = segments.coords;
   const S = EDGE_STRIDE;
@@ -60,11 +71,12 @@ export const prepareScene = (scene: Scene, metric: Metric = 'euclidean'): Prepar
   }
   filled.sort((a, b) => top[a] - top[b]);
   // chebyshev distance is half the manhattan distance in coordinates rotated by 45°
-  const nearestEdges = metric === 'chebyshev' ? toChebyshevEdges(segments) : segments;
+  const metric = metricSetup(toMetricSpec(spec));
+  const nearestEdges = metric.matrix ? transformEdges(segments, metric.matrix) : segments;
   return {
     metric,
     segments,
-    bvh: new SegmentBvh(nearestEdges, metric !== 'euclidean'),
+    bvh: new SegmentBvh(nearestEdges, metric.search, metric.p, metric.normals, metric.vertices),
     nearestShape: nearestEdges.shape,
     fillRules: scene.shapes.map((s) => s.fillRule),
     byTop: Int32Array.from(filled),
@@ -89,7 +101,7 @@ export const computeRows = (
   const { segments, bvh, nearestShape, fillRules, byTop, top, bottom } = prepared;
   const c = segments.coords;
   const nearest: Nearest = { score: Infinity, x: 0, y: 0, segment: -1 };
-  const { metric } = prepared;
+  const { search, matrix: m, inverse: mi, scale, p } = prepared.metric;
   const empty = segments.count === 0;
   const far = Math.hypot(region.maxX - region.minX, region.maxY - region.minY);
 
@@ -149,20 +161,14 @@ export const computeRows = (
         out[o + 3] = -1;
         continue;
       }
-      let distance: number;
-      let nx: number;
-      let ny: number;
-      if (metric === 'chebyshev') {
-        bvh.nearest(px + py, px - py, nearest, hint);
-        distance = nearest.score / 2;
-        nx = (nearest.x + nearest.y) / 2;
-        ny = (nearest.x - nearest.y) / 2;
-      } else {
-        bvh.nearest(px, py, nearest, hint);
-        distance = metric === 'manhattan' ? nearest.score : Math.sqrt(nearest.score);
-        nx = nearest.x;
-        ny = nearest.y;
-      }
+      // search in the metric's space, then map the nearest point back
+      if (m) bvh.nearest(m[0] * px + m[1] * py, m[2] * px + m[3] * py, nearest, hint);
+      else bvh.nearest(px, py, nearest, hint);
+      const score = nearest.score;
+      const base = search === 'l2' ? Math.sqrt(score) : search === 'lp' ? Math.pow(score, 1 / p) : score;
+      const distance = base * scale;
+      const nx = mi ? mi[0] * nearest.x + mi[1] * nearest.y : nearest.x;
+      const ny = mi ? mi[2] * nearest.x + mi[3] * nearest.y : nearest.y;
       hint = nearest.segment;
       const inside = insideList.length > 0;
       out[o] = inside ? -distance : distance;
@@ -183,7 +189,7 @@ export const sceneColors = (scene: Scene): (RGBA | null)[] => scene.shapes.map((
 /** computes the whole distance field on the calling thread */
 export const computeSdf = (scene: Scene, options: SdfOptions): SdfBuffer => {
   const layout = computeLayout(scene.bounds, options);
-  const metric = options.metric ?? 'euclidean';
+  const metric = toMetricSpec(options.metric);
   const data = computeRows(prepareScene(scene, metric), layout, 0, layout.height);
   return { ...layout, data, metric, colors: sceneColors(scene) };
 };

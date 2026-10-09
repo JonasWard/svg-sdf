@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CurveMode, Metric, SdfBuffer } from '../lib/types';
+import { CurveMode, DEFAULT_METRIC, MetricSpec, SdfBuffer } from '../lib/types';
 import { DEFAULT_SETTINGS, PostSettings, View } from '../render/settings';
 import { SAMPLES } from '../samples';
 
@@ -11,7 +11,7 @@ export interface ComputeSettings {
   /** exact bezier distances, or curves flattened to polylines */
   curves: CurveMode;
   /** how distances are measured */
-  metric: Metric;
+  metric: MetricSpec;
   /** curve flattening tolerance in buffer px, polyline mode only */
   tolerance: number;
 }
@@ -53,7 +53,7 @@ export const DEFAULT_COMPUTE: ComputeSettings = {
   width: 1024,
   padding: 15,
   curves: 'exact',
-  metric: 'euclidean',
+  metric: DEFAULT_METRIC,
   tolerance: 0.25
 };
 

@@ -46,8 +46,31 @@ export interface Contour {
   closed: boolean;
 }
 
-/** how distances are measured: straight line, sum of the axis offsets (L1), or the larger axis offset (L∞) */
-export type Metric = 'euclidean' | 'manhattan' | 'chebyshev';
+/**
+ * The unit shape distances are measured with: a circle (euclidean), diamond (manhattan, L1), square (chebyshev, L∞),
+ * Lp ball (lp, 1 < p < ∞) or regular polygon with apothem 1 (polygon).
+ */
+export type MetricKind = 'euclidean' | 'manhattan' | 'chebyshev' | 'lp' | 'polygon';
+
+/**
+ * A gauge distance d(p, q) = γ(A (q - p)): γ is the unit shape of `kind`, A rotates it by `angle` degrees and
+ * stretches it by `aspect` along its rotated y axis.
+ */
+export interface MetricSpec {
+  kind: MetricKind;
+  /** exponent of the lp kind */
+  p: number;
+  /** sides of the polygon kind, the first side faces +x */
+  sides: number;
+  angle: number;
+  aspect: number;
+}
+
+export const DEFAULT_METRIC: MetricSpec = { kind: 'euclidean', p: 3, sides: 6, angle: 0, aspect: 1 };
+
+/** a full spec from a spec, a bare kind (as older files store it) or nothing */
+export const toMetricSpec = (metric: Partial<MetricSpec> | MetricKind | null | undefined): MetricSpec =>
+  typeof metric === 'string' ? { ...DEFAULT_METRIC, kind: metric } : { ...DEFAULT_METRIC, ...(metric ?? {}) };
 
 /** how curves enter the distance field: flattened to polylines, or measured exactly as bezier curves */
 export type CurveMode = 'polyline' | 'exact';
@@ -90,7 +113,7 @@ export const SDF_STRIDE = SDF_CHANNELS.length;
 export interface SdfBuffer extends SdfLayout {
   data: Float32Array;
   /** the metric the distances are measured in */
-  metric: Metric;
+  metric: MetricSpec;
   /** display colour per shape index: its fill, else its stroke, else null */
   colors: (RGBA | null)[];
 }

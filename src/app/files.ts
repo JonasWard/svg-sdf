@@ -1,4 +1,5 @@
 import { decodeSdf } from '../lib/io/sdfFile';
+import { toMetricSpec } from '../lib/types';
 import { DEFAULT_SETTINGS, PostSettings, View } from '../render/settings';
 import { ComputeSettings, DEFAULT_COMPUTE, useStore } from './store';
 
@@ -39,6 +40,8 @@ export const settingsToJson = (): string => {
 
 export const applySettingsJson = (text: string) => {
   const parsed = JSON.parse(text) as Partial<SettingsFile>;
+  // older files store the metric as a bare kind
+  if (parsed.compute) parsed.compute.metric = toMetricSpec(parsed.compute.metric);
   const { setPost, setCompute, setView } = useStore.getState();
   setPost(merge(DEFAULT_SETTINGS, parsed.post));
   setCompute(merge(DEFAULT_COMPUTE, parsed.compute));

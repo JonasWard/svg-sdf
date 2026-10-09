@@ -1,4 +1,4 @@
-import { SDF_CHANNELS, SDF_STRIDE, SdfBuffer } from '../types';
+import { MetricKind, SDF_CHANNELS, SDF_STRIDE, SdfBuffer, toMetricSpec } from '../types';
 
 const MAGIC = 0x46445353; // 'SSDF' little endian
 const VERSION = 1;
@@ -9,8 +9,8 @@ interface Header {
   height: number;
   region: SdfBuffer['region'];
   pixelSize: number;
-  /** absent in files written before metrics existed, those are euclidean */
-  metric?: SdfBuffer['metric'];
+  /** a spec; a bare kind in files from before metric shapes, absent before metrics, those are euclidean */
+  metric?: SdfBuffer['metric'] | MetricKind;
   channels: readonly string[];
   colors: SdfBuffer['colors'];
 }
@@ -67,7 +67,7 @@ export const decodeSdf = (buffer: ArrayBuffer): SdfBuffer => {
     height: header.height,
     region: header.region,
     pixelSize: header.pixelSize,
-    metric: header.metric ?? 'euclidean',
+    metric: toMetricSpec(header.metric),
     colors: header.colors,
     data
   };

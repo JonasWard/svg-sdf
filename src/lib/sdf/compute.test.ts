@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { Scene, SDF_STRIDE } from '../types';
+import { Scene, SDF_STRIDE, toMetricSpec } from '../types';
 import { flattenSubpaths, parsePathData } from '../svg/pathData';
 import { SegmentBvh } from './bvh';
 import { computeLayout, computeRows, computeSdf, prepareScene } from './compute';
 import { packEdges } from './edges';
+import { metricMatrix, metricSetup } from './metrics';
 import { flattenGeometry } from '../svg/scene';
 import { decodeSdf, encodeSdf } from '../io/sdfFile';
 
@@ -149,9 +150,9 @@ describe('sdf file', () => {
   it('round-trips through the binary format', () => {
     const sdf = computeSdf(sceneFromPaths([{ d: 'M10 10 H60 V60 Z' }]), { width: 33 });
     sdf.colors = [[1, 0.5, 0, 1]];
-    sdf.metric = 'chebyshev';
+    sdf.metric = toMetricSpec({ kind: 'polygon', sides: 5, angle: 12, aspect: 1.5 });
     const back = decodeSdf(encodeSdf(sdf));
-    expect(back.metric).toBe('chebyshev');
+    expect(back.metric).toEqual(sdf.metric);
     expect(back.width).toBe(sdf.width);
     expect(back.height).toBe(sdf.height);
     expect(back.region).toEqual(sdf.region);
@@ -273,7 +274,7 @@ describe('metrics', () => {
     const scene = sceneFromPaths([{ d: square }]);
     for (const metric of metrics) {
       const sdf = computeSdf(scene, { width: 100, padding: 0, metric });
-      expect(sdf.metric).toBe(metric);
+      expect(sdf.metric.kind).toBe(metric);
       // diagonally off the corner (70, 70)
       const s = sample(sdf, 80, 85);
       const ax = s.px - 70;
@@ -348,5 +349,120 @@ describe('metrics', () => {
       joined.set(computeRows(prepared, layout, 13, layout.height), top.length);
       expect(joined).toEqual(whole);
     }
+  });
+});
+
+describe('metric shapes', () => {
+  const shapes = [
+    { d: 'M50 85 C10 55 5 30 25 18 C40 10 50 25 50 30 C50 25 60 10 75 18 C95 30 90 55 50 85 Z' },
+    { d: 'M10 10 Q50 -10 90 10 T90 40 L60 30 Z', fillRule: 'evenodd' as const }
+  ];
+  const field = (metric: Parameters<typeof toMetricSpec>[0], mode: 'exact' | 'polyline' = 'exact') =>
+    computeSdf(sceneInMode(shapes, mode), { width: 48, metric: toMetricSpec(metric) });
+  const distances = (sdf: ReturnType<typeof computeSdf>) =>
+    Array.from({ length: sdf.width * sdf.height }, (_, k) => sdf.data[k * SDF_STRIDE]);
+  const expectClose = (a: number[], b: number[], factor = 1) =>
+    a.forEach((v, i) => expect(v).toBeCloseTo(b[i] * factor, 3));
+
+  it('reproduces the named metrics as special cases', () => {
+    const euclid = distances(field('euclidean'));
+    const manhattan = distances(field('manhattan'));
+    const chebyshev = distances(field('chebyshev'));
+    expectClose(distances(field({ kind: 'lp', p: 2 })), euclid);
+    expectClose(distances(field({ kind: 'lp', p: 1 })), manhattan);
+    // a square with apothem 1 is the chebyshev unit square, turned by 45° it is the diamond scaled by 1/√2
+    expectClose(distances(field({ kind: 'polygon', sides: 4 })), chebyshev);
+    expectClose(distances(field({ kind: 'polygon', sides: 4, angle: 45 })), manhattan, Math.SQRT1_2);
+    // the diamond turned by 45° is the square scaled by √2
+    expectClose(distances(field({ kind: 'manhattan', angle: 45 })), chebyshev, Math.SQRT2);
+  });
+
+  it('lies between the neighbouring metrics', () => {
+    const manhattan = distances(field('manhattan'));
+    const euclid = distances(field('euclidean'));
+    const chebyshev = distances(field('chebyshev'));
+    const lp3 = distances(field({ kind: 'lp', p: 3 }));
+    const lp15 = distances(field({ kind: 'lp', p: 1.5 }));
+    lp3.forEach((v, i) => {
+      expect(Math.abs(v)).toBeLessThanOrEqual(Math.abs(euclid[i]) + 1e-4);
+      expect(Math.abs(v)).toBeGreaterThanOrEqual(Math.abs(chebyshev[i]) - 1e-4);
+      expect(Math.abs(lp15[i])).toBeLessThanOrEqual(Math.abs(manhattan[i]) + 1e-4);
+      expect(Math.abs(lp15[i])).toBeGreaterThanOrEqual(Math.abs(euclid[i]) - 1e-4);
+    });
+  });
+
+  it('stretches distances along the rotated y axis', () => {
+    const scene = sceneFromPaths([{ d: 'M30 30 H70 V70 H30 Z' }]);
+    const sdf = computeSdf(scene, { width: 100, padding: 0, metric: toMetricSpec({ kind: 'euclidean', aspect: 2 }) });
+    // straight below the square vertical offsets count half
+    expect(sample(sdf, 50, 85).d).toBeCloseTo((85.5 - 70) / 2, 4);
+    expect(sample(sdf, 85, 50).d).toBeCloseTo(85.5 - 70, 4);
+    // turned by 90° the stretch acts along x instead
+    const turned = computeSdf(scene, {
+      width: 100,
+      padding: 0,
+      metric: toMetricSpec({ kind: 'euclidean', angle: 90, aspect: 2 })
+    });
+    expect(sample(turned, 85, 50).d).toBeCloseTo((85.5 - 70) / 2, 4);
+  });
+
+  it('stores a nearest point realising the distance, keeps signs, in both curve modes', () => {
+    const specs = [
+      toMetricSpec({ kind: 'lp', p: 3.5, angle: 20, aspect: 1.5 }),
+      toMetricSpec({ kind: 'polygon', sides: 5, angle: 10 }),
+      toMetricSpec({ kind: 'polygon', sides: 6, aspect: 0.5 }),
+      toMetricSpec({ kind: 'chebyshev', angle: 30 })
+    ];
+    for (const mode of ['exact', 'polyline'] as const) {
+      const base = distances(field('euclidean', mode));
+      for (const spec of specs) {
+        const sdf = field(spec, mode);
+        const setup = metricSetup(spec);
+        const a = metricMatrix(spec);
+        for (let k = 0; k < sdf.width * sdf.height; k++) {
+          const o = k * SDF_STRIDE;
+          if (Math.abs(base[k]) > 1e-6) expect(Math.sign(sdf.data[o])).toBe(Math.sign(base[k]));
+          // the gauge of the stored vector is the stored distance
+          const wx = a[0] * sdf.data[o + 1] + a[1] * sdf.data[o + 2];
+          const wy = a[2] * sdf.data[o + 1] + a[3] * sdf.data[o + 2];
+          let g: number;
+          if (spec.kind === 'lp') g = (Math.abs(wx) ** spec.p + Math.abs(wy) ** spec.p) ** (1 / spec.p);
+          else if (spec.kind === 'chebyshev') g = Math.max(Math.abs(wx), Math.abs(wy));
+          else {
+            g = -Infinity;
+            for (let i = 0; i < setup.normals.length / 2; i++)
+              g = Math.max(g, setup.normals[i * 2] * wx + setup.normals[i * 2 + 1] * wy);
+          }
+          expect(g).toBeCloseTo(Math.abs(sdf.data[o]), 3);
+        }
+      }
+    }
+  });
+
+  it('gives the same rows when computed in bands', () => {
+    const scene = sceneInMode(shapes, 'exact');
+    for (const spec of [toMetricSpec({ kind: 'lp', p: 3 }), toMetricSpec({ kind: 'polygon', sides: 7, angle: 33 })]) {
+      const layout = computeLayout(scene.bounds, { width: 40 });
+      const prepared = prepareScene(scene, spec);
+      const whole = computeRows(prepared, layout, 0, layout.height);
+      const joined = new Float32Array(whole.length);
+      const top = computeRows(prepared, layout, 0, 11);
+      joined.set(top);
+      joined.set(computeRows(prepared, layout, 11, layout.height), top.length);
+      expect(joined).toEqual(whole);
+    }
+  });
+
+  it('reads bare metric kinds from older files', () => {
+    const sdf = computeSdf(sceneFromPaths([{ d: 'M10 10 H60 V60 Z' }]), { width: 8 });
+    const buffer = encodeSdf(sdf);
+    const bytes = new Uint8Array(buffer);
+    // rewrite the metric in the json header to the old string form, padded to keep the header length
+    const length = new DataView(buffer).getUint32(8, true);
+    const header = new TextDecoder().decode(bytes.subarray(12, 12 + length));
+    const json = JSON.stringify(sdf.metric);
+    const patched = header.replace(json, JSON.stringify('manhattan').padEnd(json.length, ' '));
+    bytes.set(new TextEncoder().encode(patched), 12);
+    expect(decodeSdf(buffer).metric).toEqual(toMetricSpec('manhattan'));
   });
 });

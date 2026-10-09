@@ -39,7 +39,6 @@ uniform float uTileAngleBands;
 uniform float uTileSpacing; // world units
 uniform float uTileContrast;
 
-uniform int uMetric; // 0 euclidean, 1 manhattan, 2 chebyshev
 
 uniform float uShapeRange;
 uniform float uShadeInside;
@@ -118,6 +117,19 @@ float wrappedLineDistancePx(float u) {
   return du > 1e-9 && du < 0.5 ? min(a, 1.0 - a) / du : 1e9;
 }
 
+/**
+ * How fast the distance grows per world unit around texel c. 1 for euclidean distance, but other metrics grow
+ * faster or slower depending on the direction, and line widths follow it. Estimated from the neighbouring texels:
+ * a distance field never changes faster than its slope, and a difference across a ridge or the crease along a
+ * stroke only comes out smaller, so per axis the larger one-sided difference is the slope of the smooth side.
+ */
+float fieldSlope(ivec2 c) {
+  float d0 = texel(c).x;
+  float gx = max(abs(texel(c + ivec2(1, 0)).x - d0), abs(d0 - texel(c - ivec2(1, 0)).x));
+  float gy = max(abs(texel(c + ivec2(0, 1)).x - d0), abs(d0 - texel(c - ivec2(0, 1)).x));
+  return max(length(vec2(gx, gy)) / uPixelSize, 1e-3);
+}
+
 /** coverage of a line of `width` px, given the distance to its centre line in px */
 float line(float distancePx, float width) {
   return 1.0 - smoothstep(width * 0.5 - 0.5, width * 0.5 + 0.5, distancePx);
@@ -142,9 +154,7 @@ void main() {
   int shape = int(texel(ivec2(floor(t + 0.5))).w + 0.5);
   bool inside = d < 0.0;
   float px = uScale;
-  // how fast the distance grows per world unit: 1, except for manhattan where the nearest point lies diagonally
-  float slope = 1.0;
-  if (uMetric == 1) slope = max(1.0, length(sign(texel(ivec2(floor(t + 0.5))).yz)));
+  float slope = fieldSlope(ivec2(floor(t + 0.5)));
   // world units per unit of distance, per device px
   float pxD = px * slope;
 

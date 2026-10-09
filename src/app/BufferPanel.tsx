@@ -1,4 +1,5 @@
 import { activeRenderer } from './SdfCanvas';
+import { MetricControls } from './MetricControls';
 import { NumberField, Section, Segmented, Slider } from './controls';
 import { useStore } from './store';
 
@@ -35,15 +36,7 @@ export const BufferPanel = () => {
         step={1}
         onChange={(padding) => setCompute({ padding })}
       />
-      <div className="control stacked">
-        <span className="label">Metric</span>
-        <Segmented
-          options={['euclidean', 'manhattan', 'chebyshev'] as const}
-          value={compute.metric}
-          labels={{ euclidean: 'Euclid', manhattan: 'Manhattan', chebyshev: 'Chebyshev' }}
-          onChange={(metric) => setCompute({ metric })}
-        />
-      </div>
+      <MetricControls metric={compute.metric} onChange={(metric) => setCompute({ metric })} />
       <div className="control stacked">
         <span className="label">Curves</span>
         <Segmented

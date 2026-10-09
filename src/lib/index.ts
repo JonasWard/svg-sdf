@@ -6,7 +6,7 @@ export { flattenGeometry } from './svg/scene';
 export { computeSdf, computeLayout, computeRows, prepareScene } from './sdf/compute';
 export { packEdges } from './sdf/edges';
 export { nearestOnCubic, monotonePieces } from './sdf/bezier';
-export { nearestL1Cubic, nearestL1Line } from './sdf/metrics';
+export { metricMatrix, metricSetup, nearestL1Cubic, nearestL1Line, nearestLp, nearestPolygon } from './sdf/metrics';
 export type { SdfOptions } from './sdf/compute';
 export { SdfWorkerPool, CancelledError } from './sdf/workerPool';
 export type { SdfJob } from './sdf/workerPool';

@@ -1,4 +1,4 @@
-import { Scene, SDF_STRIDE, SdfBuffer } from '../types';
+import { Scene, SDF_STRIDE, SdfBuffer, toMetricSpec } from '../types';
 import { computeLayout, sceneColors, SdfOptions } from './compute';
 import { WorkerRequest, WorkerResponse } from './protocol';
 
@@ -24,7 +24,7 @@ export class SdfWorkerPool {
     this.cancelCurrent();
     const job = ++this.jobId;
     const layout = computeLayout(scene.bounds, options);
-    const metric = options.metric ?? 'euclidean';
+    const metric = toMetricSpec(options.metric);
     const { width, height } = layout;
     const data = new Float32Array(width * height * SDF_STRIDE);
     const rowsPerTask = Math.max(1, Math.floor(CHUNK_PIXELS / width));

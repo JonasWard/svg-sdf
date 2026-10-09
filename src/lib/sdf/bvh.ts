@@ -1,13 +1,13 @@
 import { CurvePoint, nearestOnCubic } from './bezier';
 import { EDGE_LINE, EDGE_STRIDE, Edges } from './edges';
-import { L1Point, nearestL1Cubic, nearestL1Line } from './metrics';
+import { GaugePoint, L1Point, nearestL1Cubic, nearestL1Line, nearestLp, nearestPolygon, Search } from './metrics';
 
 const LEAF_SIZE = 4;
 const STACK_SIZE = 256;
 
 /** result of a nearest query, reused between queries to avoid allocations */
 export interface Nearest {
-  /** squared euclidean distance, or the manhattan distance for an L1 hierarchy */
+  /** the search's score: squared euclidean, manhattan, |dx|^p + |dy|^p for lp, or the polygon gauge */
   score: number;
   /** closest point on the edge */
   x: number;
@@ -17,8 +17,8 @@ export interface Nearest {
 }
 
 /**
- * Bounding volume hierarchy over edges (lines and cubics), answering exact nearest-edge queries
- * under the euclidean metric, or under the manhattan metric when built with `l1`.
+ * Bounding volume hierarchy over edges (lines and cubics), answering exact nearest-edge queries under the unit shape
+ * of its search: euclidean, manhattan, lp or a regular polygon (see metrics.ts).
  * Median split along the longest axis of the centroids, leaves of up to four edges.
  * Boxes hold all control points, which by the convex hull property contain the curve.
  */
@@ -31,12 +31,16 @@ export class SegmentBvh {
   private readonly segId: Int32Array; // leaf order -> original edge index
   private readonly curvePoint: CurvePoint = { d2: 0, x: 0, y: 0, t: 0 };
   private readonly l1Point: L1Point = { d: 0, x: 0, y: 0 };
+  private readonly gaugePoint: GaugePoint = { score: 0, x: 0, y: 0 };
   private readonly stack = new Int32Array(STACK_SIZE);
   readonly nodeCount: number;
 
   constructor(
     edges: Edges,
-    private readonly l1 = false
+    private readonly search: Search = 'l2',
+    private readonly p = 2,
+    private readonly normals: Float64Array = new Float64Array(0),
+    private readonly vertices: Float64Array = new Float64Array(0)
   ) {
     const n = edges.count;
     const c = edges.coords;
@@ -178,9 +182,37 @@ export class SegmentBvh {
   /** lower bound of the score of anything inside the box */
   private boxScore(box: Float64Array, node: number, px: number, py: number) {
     const o = node * 4;
-    const dx = Math.max(box[o] - px, 0, px - box[o + 2]);
-    const dy = Math.max(box[o + 1] - py, 0, py - box[o + 3]);
-    return this.l1 ? dx + dy : dx * dx + dy * dy;
+    return this.rangeScore(box[o] - px, box[o + 1] - py, box[o + 2] - px, box[o + 3] - py);
+  }
+
+  /** lower bound of the score of every offset w = q - p with x0 <= w.x <= x1 and y0 <= w.y <= y1 */
+  private rangeScore(x0: number, y0: number, x1: number, y1: number) {
+    if (this.search === 'polygon') {
+      // min over the box of max_k n_k . w is at least max_k of min over the box of n_k . w, a corner per side
+      const n = this.normals;
+      let bound = 0;
+      for (let k = 0; k < n.length; k += 2) {
+        const nx = n[k];
+        const ny = n[k + 1];
+        bound = Math.max(bound, nx * (nx > 0 ? x0 : x1) + ny * (ny > 0 ? y0 : y1));
+      }
+      return bound;
+    }
+    return this.pointScore(Math.max(x0, 0, -x1), Math.max(y0, 0, -y1));
+  }
+
+  /** the score of an axis offset whose components are both positive, for the l2, l1 and lp searches */
+  private pointScore(dx: number, dy: number) {
+    if (this.search === 'l2') return dx * dx + dy * dy;
+    if (this.search === 'l1') return dx + dy;
+    // the exact box score; a cheaper, looser bound lets far more edges through to the costly lp search
+    return Math.pow(dx, this.p) + Math.pow(dy, this.p);
+  }
+
+  private gauge(s: Float64Array, o: number, line: boolean, px: number, py: number) {
+    return this.search === 'lp'
+      ? nearestLp(s, o, line, px, py, this.p, this.gaugePoint)
+      : nearestPolygon(s, o, line, px, py, this.normals, this.vertices, this.gaugePoint);
   }
 
   private test(i: number, px: number, py: number, out: Nearest) {
@@ -191,18 +223,19 @@ export class SegmentBvh {
     let y: number;
     if (this.segKind[i] !== EDGE_LINE) {
       // skip the curve search when the control point box cannot win
-      const bx = Math.max(
+      const bound = this.rangeScore(
         Math.min(s[o], s[o + 2], s[o + 4], s[o + 6]) - px,
-        0,
-        px - Math.max(s[o], s[o + 2], s[o + 4], s[o + 6])
-      );
-      const by = Math.max(
         Math.min(s[o + 1], s[o + 3], s[o + 5], s[o + 7]) - py,
-        0,
-        py - Math.max(s[o + 1], s[o + 3], s[o + 5], s[o + 7])
+        Math.max(s[o], s[o + 2], s[o + 4], s[o + 6]) - px,
+        Math.max(s[o + 1], s[o + 3], s[o + 5], s[o + 7]) - py
       );
-      if ((this.l1 ? bx + by : bx * bx + by * by) >= out.score) return;
-      if (this.l1) {
+      if (bound >= out.score) return;
+      if (this.search === 'lp' || this.search === 'polygon') {
+        const q = this.gauge(s, o, false, px, py);
+        score = q.score;
+        x = q.x;
+        y = q.y;
+      } else if (this.search === 'l1') {
         const q = nearestL1Cubic(s, o, px, py, this.l1Point);
         score = q.d;
         x = q.x;
@@ -213,7 +246,20 @@ export class SegmentBvh {
         x = q.x;
         y = q.y;
       }
-    } else if (this.l1) {
+    } else if (this.search === 'lp' || this.search === 'polygon') {
+      // the line searches cost more than a box test
+      const bound = this.rangeScore(
+        Math.min(s[o], s[o + 6]) - px,
+        Math.min(s[o + 1], s[o + 7]) - py,
+        Math.max(s[o], s[o + 6]) - px,
+        Math.max(s[o + 1], s[o + 7]) - py
+      );
+      if (bound >= out.score) return;
+      const q = this.gauge(s, o, true, px, py);
+      score = q.score;
+      x = q.x;
+      y = q.y;
+    } else if (this.search === 'l1') {
       const q = nearestL1Line(s, o, px, py, this.l1Point);
       score = q.d;
       x = q.x;
