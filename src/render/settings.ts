@@ -7,6 +7,11 @@ export interface RampStop {
   color: string;
 }
 
+/** where polar hues come from: an hsv rainbow, a perceptually even oklch wheel, or a cyclic gradient of own stops */
+export type PolarPalette = 'hsv' | 'oklch' | 'gradient';
+export const POLAR_PALETTES: PolarPalette[] = ['hsv', 'oklch', 'gradient'];
+
+/** near/far values per side; saturation and value for hsv and gradient, chroma and lightness for oklch */
 export interface PolarSide {
   satNear: number;
   satFar: number;
@@ -30,6 +35,9 @@ export interface PostSettings {
     repeat: boolean;
   };
   polar: {
+    palette: PolarPalette;
+    /** the cyclic gradient, positions in 0..1, wrapping from the last stop back to the first */
+    stops: RampStop[];
     /** hue turns per full turn of the direction to the nearest edge */
     repetitions: number;
     /** 0..1 */
@@ -41,6 +49,18 @@ export interface PostSettings {
     /** lines of constant direction, 0 for none */
     radialLines: number;
     radialWidth: number;
+    /** the (direction × distance) plane cut into tiles */
+    tiles: {
+      enabled: boolean;
+      /** checker darkens every other tile, mosaic gives every tile the flat colour of its centre */
+      style: 'checker' | 'mosaic';
+      /** tiles around the full turn */
+      angleBands: number;
+      /** tile depth along the distance */
+      distanceSpacing: number;
+      /** how much checker tiles darken */
+      contrast: number;
+    };
   };
   shape: {
     range: number;
@@ -97,13 +117,21 @@ export const DEFAULT_SETTINGS: PostSettings = {
     repeat: false
   },
   polar: {
+    palette: 'hsv',
+    stops: [
+      { pos: 0, color: '#e2d9e2' },
+      { pos: 0.25, color: '#6f86c0' },
+      { pos: 0.5, color: '#2f1436' },
+      { pos: 0.75, color: '#b0573f' }
+    ],
     repetitions: 1,
     hueOffset: 0,
     range: 30,
     inside: { satNear: 0.65, satFar: 0.4, valNear: 0.35, valFar: 0.45 },
     outside: { satNear: 0.85, satFar: 0.1, valNear: 0.85, valFar: 1 },
     radialLines: 0,
-    radialWidth: 1
+    radialWidth: 1,
+    tiles: { enabled: false, style: 'checker', angleBands: 24, distanceSpacing: 3, contrast: 0.3 }
   },
   shape: { range: 20, shadeInside: 0.5, fadeOutside: 0.85 },
   grayscale: { range: 10 },

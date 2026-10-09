@@ -1,5 +1,5 @@
-import { PRESETS } from '../render/presets';
-import { MODES, PolarSide, PostSettings } from '../render/settings';
+import { CYCLIC_GRADIENTS, PRESETS } from '../render/presets';
+import { MODES, POLAR_PALETTES, PolarSide, PostSettings } from '../render/settings';
 import { ColorField, RampEditor, Section, Segmented, Slider, Toggle } from './controls';
 import { useStore } from './store';
 
@@ -14,47 +14,56 @@ const useGroup = <K extends keyof PostSettings>(key: K) => {
   return [value, set] as const;
 };
 
+const PALETTE_LABELS = { hsv: 'HSV', oklch: 'OKLCH', gradient: 'Gradient' } as const;
+
 const PolarSideControls = ({
   title,
   side,
+  perceptual,
   onChange
 }: {
   title: string;
   side: PolarSide;
+  /** oklch reads the sliders as chroma and lightness */
+  perceptual: boolean;
   onChange: (s: PolarSide) => void;
-}) => (
-  <>
-    <h3>{title}</h3>
-    <Slider
-      label="Saturation near"
-      value={side.satNear}
-      min={0}
-      max={1}
-      onChange={(satNear) => onChange({ ...side, satNear })}
-    />
-    <Slider
-      label="Saturation far"
-      value={side.satFar}
-      min={0}
-      max={1}
-      onChange={(satFar) => onChange({ ...side, satFar })}
-    />
-    <Slider
-      label="Value near"
-      value={side.valNear}
-      min={0}
-      max={1}
-      onChange={(valNear) => onChange({ ...side, valNear })}
-    />
-    <Slider
-      label="Value far"
-      value={side.valFar}
-      min={0}
-      max={1}
-      onChange={(valFar) => onChange({ ...side, valFar })}
-    />
-  </>
-);
+}) => {
+  const sat = perceptual ? 'Chroma' : 'Saturation';
+  const val = perceptual ? 'Lightness' : 'Value';
+  return (
+    <>
+      <h3>{title}</h3>
+      <Slider
+        label={`${sat} near`}
+        value={side.satNear}
+        min={0}
+        max={1}
+        onChange={(satNear) => onChange({ ...side, satNear })}
+      />
+      <Slider
+        label={`${sat} far`}
+        value={side.satFar}
+        min={0}
+        max={1}
+        onChange={(satFar) => onChange({ ...side, satFar })}
+      />
+      <Slider
+        label={`${val} near`}
+        value={side.valNear}
+        min={0}
+        max={1}
+        onChange={(valNear) => onChange({ ...side, valNear })}
+      />
+      <Slider
+        label={`${val} far`}
+        value={side.valFar}
+        min={0}
+        max={1}
+        onChange={(valFar) => onChange({ ...side, valFar })}
+      />
+    </>
+  );
+};
 
 export const PostPanel = () => {
   const post = useStore((s) => s.post);
@@ -95,8 +104,38 @@ export const PostPanel = () => {
         {post.mode === 'polar' && (
           <>
             <p className="hint">
-              Hue follows the direction to the nearest edge, saturation and value follow the distance.
+              Hue follows the direction to the nearest edge, the near/far settings follow the distance.
             </p>
+            <Segmented
+              options={POLAR_PALETTES}
+              value={polar.palette}
+              labels={PALETTE_LABELS}
+              onChange={(palette) => setPolar({ palette })}
+            />
+            {polar.palette === 'oklch' && (
+              <p className="hint">
+                A perceptual hue wheel: every hue at the same lightness, no bright yellow or cyan bands.
+              </p>
+            )}
+            {polar.palette === 'gradient' && (
+              <>
+                <select
+                  value=""
+                  onChange={(e) => e.target.value && setPolar({ stops: CYCLIC_GRADIENTS[e.target.value] })}
+                  aria-label="cyclic gradients"
+                >
+                  <option value="">Gradient presets…</option>
+                  {Object.keys(CYCLIC_GRADIENTS).map((name) => (
+                    <option key={name}>{name}</option>
+                  ))}
+                </select>
+                <RampEditor
+                  label="Cyclic stops (wrap around)"
+                  stops={polar.stops}
+                  onChange={(stops) => setPolar({ stops })}
+                />
+              </>
+            )}
             <Slider
               label="Hue repetitions"
               value={polar.repetitions}
@@ -138,8 +177,60 @@ export const PostPanel = () => {
                 onChange={(radialWidth) => setPolar({ radialWidth })}
               />
             )}
-            <PolarSideControls title="Outside" side={polar.outside} onChange={(outside) => setPolar({ outside })} />
-            <PolarSideControls title="Inside" side={polar.inside} onChange={(inside) => setPolar({ inside })} />
+            <PolarSideControls
+              title="Outside"
+              side={polar.outside}
+              perceptual={polar.palette === 'oklch'}
+              onChange={(outside) => setPolar({ outside })}
+            />
+            <PolarSideControls
+              title="Inside"
+              side={polar.inside}
+              perceptual={polar.palette === 'oklch'}
+              onChange={(inside) => setPolar({ inside })}
+            />
+            <h3>Tiles</h3>
+            <p className="hint">Cuts the direction × distance plane into tiles.</p>
+            <Toggle
+              label="Tiles"
+              value={polar.tiles.enabled}
+              onChange={(enabled) => setPolar({ tiles: { ...polar.tiles, enabled } })}
+            />
+            {polar.tiles.enabled && (
+              <>
+                <Segmented
+                  options={['checker', 'mosaic'] as const}
+                  value={polar.tiles.style}
+                  labels={{ checker: 'Checker', mosaic: 'Mosaic' }}
+                  onChange={(style) => setPolar({ tiles: { ...polar.tiles, style } })}
+                />
+                <Slider
+                  label="Angle bands"
+                  value={polar.tiles.angleBands}
+                  min={2}
+                  max={96}
+                  step={1}
+                  onChange={(angleBands) => setPolar({ tiles: { ...polar.tiles, angleBands } })}
+                />
+                <Slider
+                  label="Distance spacing %"
+                  value={polar.tiles.distanceSpacing}
+                  min={0.2}
+                  max={20}
+                  step={0.1}
+                  onChange={(distanceSpacing) => setPolar({ tiles: { ...polar.tiles, distanceSpacing } })}
+                />
+                {polar.tiles.style === 'checker' && (
+                  <Slider
+                    label="Contrast"
+                    value={polar.tiles.contrast}
+                    min={0}
+                    max={1}
+                    onChange={(contrast) => setPolar({ tiles: { ...polar.tiles, contrast } })}
+                  />
+                )}
+              </>
+            )}
           </>
         )}
 

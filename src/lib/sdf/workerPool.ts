@@ -24,6 +24,7 @@ export class SdfWorkerPool {
     this.cancelCurrent();
     const job = ++this.jobId;
     const layout = computeLayout(scene.bounds, options);
+    const metric = options.metric ?? 'euclidean';
     const { width, height } = layout;
     const data = new Float32Array(width * height * SDF_STRIDE);
     const rowsPerTask = Math.max(1, Math.floor(CHUNK_PIXELS / width));
@@ -60,11 +61,11 @@ export class SdfWorkerPool {
           onProgress?.(doneRows / height);
           if (doneRows === height) {
             this.current = null;
-            resolve({ ...layout, data, colors: sceneColors(scene) });
+            resolve({ ...layout, data, metric, colors: sceneColors(scene) });
           } else feed(worker);
         };
         worker.onerror = (event) => this.cancelCurrent(new Error(event.message || 'worker failed'));
-        worker.postMessage({ type: 'scene', job, scene, layout } satisfies WorkerRequest);
+        worker.postMessage({ type: 'scene', job, scene, layout, metric } satisfies WorkerRequest);
         // two tasks in flight per worker so it never idles waiting for the next one
         feed(worker);
         feed(worker);

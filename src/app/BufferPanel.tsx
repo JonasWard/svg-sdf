@@ -35,16 +35,23 @@ export const BufferPanel = () => {
         step={1}
         onChange={(padding) => setCompute({ padding })}
       />
-      <div className="control">
+      <div className="control stacked">
+        <span className="label">Metric</span>
+        <Segmented
+          options={['euclidean', 'manhattan', 'chebyshev'] as const}
+          value={compute.metric}
+          labels={{ euclidean: 'Euclid', manhattan: 'Manhattan', chebyshev: 'Chebyshev' }}
+          onChange={(metric) => setCompute({ metric })}
+        />
+      </div>
+      <div className="control stacked">
         <span className="label">Curves</span>
-        <div className="span-2">
-          <Segmented
-            options={['exact', 'polyline'] as const}
-            value={compute.curves}
-            labels={{ exact: 'Exact', polyline: 'Polyline' }}
-            onChange={(curves) => setCompute({ curves })}
-          />
-        </div>
+        <Segmented
+          options={['exact', 'polyline'] as const}
+          value={compute.curves}
+          labels={{ exact: 'Exact', polyline: 'Polyline' }}
+          onChange={(curves) => setCompute({ curves })}
+        />
       </div>
       {compute.curves === 'polyline' && (
         <Slider

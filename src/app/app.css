@@ -71,6 +71,7 @@ body,
   background: var(--panel-bg);
   color: var(--panel-fg);
   backdrop-filter: blur(8px);
+  overflow-x: hidden;
   overscroll-behavior: contain;
 }
 
@@ -214,11 +215,12 @@ select {
   accent-color: var(--accent);
 }
 
-.control .span-2 {
-  grid-column: span 2;
+.control.stacked {
+  grid-template-columns: 1fr;
+  gap: 4px;
 }
 
-.control .span-2 .segmented {
+.control.stacked .segmented {
   margin: 0;
 }
 
@@ -252,6 +254,11 @@ input[type='color'] {
 
 .segmented button {
   flex: 1;
+  min-width: 0;
+  padding: 5px 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   border-radius: 0;
 }
 

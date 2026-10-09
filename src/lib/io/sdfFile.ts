@@ -9,6 +9,8 @@ interface Header {
   height: number;
   region: SdfBuffer['region'];
   pixelSize: number;
+  /** absent in files written before metrics existed, those are euclidean */
+  metric?: SdfBuffer['metric'];
   channels: readonly string[];
   colors: SdfBuffer['colors'];
 }
@@ -24,6 +26,7 @@ export const encodeSdf = (sdf: SdfBuffer): ArrayBuffer => {
     height: sdf.height,
     region: sdf.region,
     pixelSize: sdf.pixelSize,
+    metric: sdf.metric,
     channels: SDF_CHANNELS,
     colors: sdf.colors
   };
@@ -64,6 +67,7 @@ export const decodeSdf = (buffer: ArrayBuffer): SdfBuffer => {
     height: header.height,
     region: header.region,
     pixelSize: header.pixelSize,
+    metric: header.metric ?? 'euclidean',
     colors: header.colors,
     data
   };

@@ -16,7 +16,7 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
     if (msg.type === 'scene') {
       job = msg.job;
       layout = msg.layout;
-      prepared = prepareScene(msg.scene);
+      prepared = prepareScene(msg.scene, msg.metric);
       return;
     }
     if (msg.job !== job || !prepared || !layout) return;

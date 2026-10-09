@@ -46,6 +46,9 @@ export interface Contour {
   closed: boolean;
 }
 
+/** how distances are measured: straight line, sum of the axis offsets (L1), or the larger axis offset (L∞) */
+export type Metric = 'euclidean' | 'manhattan' | 'chebyshev';
+
 /** how curves enter the distance field: flattened to polylines, or measured exactly as bezier curves */
 export type CurveMode = 'polyline' | 'exact';
 
@@ -80,12 +83,14 @@ export const SDF_STRIDE = SDF_CHANNELS.length;
 
 /**
  * The distance field. Per pixel, row major from the top left (svg y-down):
- * - distance: signed distance to the nearest edge in svg units, negative inside
+ * - distance: signed distance to the nearest edge in svg units under the buffer's metric, negative inside
  * - dx, dy: the vector from the pixel centre to that nearest point on the edge
  * - shape: index of the shape the pixel belongs to, the topmost filled shape containing it, otherwise the shape owning the nearest edge
  */
 export interface SdfBuffer extends SdfLayout {
   data: Float32Array;
+  /** the metric the distances are measured in */
+  metric: Metric;
   /** display colour per shape index: its fill, else its stroke, else null */
   colors: (RGBA | null)[];
 }

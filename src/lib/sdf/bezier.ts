@@ -8,7 +8,7 @@
 const EPS = 1e-9;
 
 /** roots of a t^2 + b t + c in the open interval (0, 1) */
-const unitQuadraticRoots = (a: number, b: number, c: number, out: number[]) => {
+export const unitQuadraticRoots = (a: number, b: number, c: number, out: number[]) => {
   const scale = Math.max(Math.abs(a), Math.abs(b), Math.abs(c));
   if (scale === 0) return;
   a /= scale;
@@ -215,30 +215,36 @@ export const nearestOnCubic = (
   return out;
 };
 
-/** x where a y-monotone cubic at c[o .. o + 8] crosses the horizontal line at y, which must lie between its end ys */
-export const crossingX = (c: ArrayLike<number>, o: number, y: number): number => {
-  const y0 = c[o + 1];
-  const y3 = c[o + 7];
-  const ay = -y0 + 3 * c[o + 3] - 3 * c[o + 5] + y3;
-  const by = 3 * y0 - 6 * c[o + 3] + 3 * c[o + 5];
-  const cy = 3 * (c[o + 3] - y0);
-  const rising = y3 > y0;
+/**
+ * The parameter where a cubic at c[o .. o + 8], monotone along `axis` (0 = x, 1 = y), reaches `value`,
+ * which must lie between the end values on that axis. Newton steps, kept in a shrinking bracket.
+ */
+export const monotoneParameter = (c: ArrayLike<number>, o: number, axis: 0 | 1, value: number): number => {
+  const v0 = c[o + axis];
+  const v3 = c[o + 6 + axis];
+  const a = -v0 + 3 * c[o + 2 + axis] - 3 * c[o + 4 + axis] + v3;
+  const b = 3 * v0 - 6 * c[o + 2 + axis] + 3 * c[o + 4 + axis];
+  const k = 3 * (c[o + 2 + axis] - v0);
+  const rising = v3 > v0;
   let lo = 0;
   let hi = 1;
-  let t = (y - y0) / (y3 - y0);
+  let t = (value - v0) / (v3 - v0);
   for (let i = 0; i < 40; i++) {
-    const f = ((ay * t + by) * t + cy) * t + y0 - y;
+    const f = ((a * t + b) * t + k) * t + v0 - value;
     if (f > 0 === rising) hi = t;
     else lo = t;
-    const fp = (3 * ay * t + 2 * by) * t + cy;
+    const fp = (3 * a * t + 2 * b) * t + k;
     let next = fp !== 0 ? t - f / fp : NaN;
     if (!(next >= lo && next <= hi)) next = (lo + hi) / 2;
-    if (Math.abs(next - t) < 1e-14) {
-      t = next;
-      break;
-    }
+    if (Math.abs(next - t) < 1e-14) return next;
     t = next;
   }
+  return t;
+};
+
+/** x where a y-monotone cubic at c[o .. o + 8] crosses the horizontal line at y, which must lie between its end ys */
+export const crossingX = (c: ArrayLike<number>, o: number, y: number): number => {
+  const t = monotoneParameter(c, o, 1, y);
   const x0 = c[o];
   const ax = -x0 + 3 * c[o + 2] - 3 * c[o + 4] + c[o + 6];
   const bx = 3 * x0 - 6 * c[o + 2] + 3 * c[o + 4];

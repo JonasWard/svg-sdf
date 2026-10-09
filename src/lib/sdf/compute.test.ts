@@ -125,7 +125,7 @@ describe('SegmentBvh', () => {
     });
     const segments = packEdges(sceneFromPaths(paths));
     const bvh = new SegmentBvh(segments);
-    const out = { d2: 0, x: 0, y: 0, segment: -1 };
+    const out = { score: 0, x: 0, y: 0, segment: -1 };
     for (let q = 0; q < 500; q++) {
       const px = rand() * 1.4 - 20;
       const py = rand() * 1.4 - 20;
@@ -140,7 +140,7 @@ describe('SegmentBvh', () => {
         const t = Math.max(0, Math.min(1, ((px - ax) * ex + (py - ay) * ey) / (ex * ex + ey * ey)));
         best = Math.min(best, (ax + t * ex - px) ** 2 + (ay + t * ey - py) ** 2);
       }
-      expect(out.d2).toBeCloseTo(best, 9);
+      expect(out.score).toBeCloseTo(best, 9);
     }
   });
 });
@@ -149,7 +149,9 @@ describe('sdf file', () => {
   it('round-trips through the binary format', () => {
     const sdf = computeSdf(sceneFromPaths([{ d: 'M10 10 H60 V60 Z' }]), { width: 33 });
     sdf.colors = [[1, 0.5, 0, 1]];
+    sdf.metric = 'chebyshev';
     const back = decodeSdf(encodeSdf(sdf));
+    expect(back.metric).toBe('chebyshev');
     expect(back.width).toBe(sdf.width);
     expect(back.height).toBe(sdf.height);
     expect(back.region).toEqual(sdf.region);
@@ -260,5 +262,91 @@ describe('exact curve mode', () => {
     joined.set(top);
     joined.set(computeRows(prepared, layout, 17, layout.height), top.length);
     expect(joined).toEqual(whole);
+  });
+});
+
+describe('metrics', () => {
+  const square = 'M30 30 H70 V70 H30 Z';
+  const metrics = ['euclidean', 'manhattan', 'chebyshev'] as const;
+
+  it('measures an axis aligned square in each metric', () => {
+    const scene = sceneFromPaths([{ d: square }]);
+    for (const metric of metrics) {
+      const sdf = computeSdf(scene, { width: 100, padding: 0, metric });
+      expect(sdf.metric).toBe(metric);
+      // diagonally off the corner (70, 70)
+      const s = sample(sdf, 80, 85);
+      const ax = s.px - 70;
+      const ay = s.py - 70;
+      const expected =
+        metric === 'euclidean' ? Math.hypot(ax, ay) : metric === 'manhattan' ? ax + ay : Math.max(ax, ay);
+      expect(s.d).toBeCloseTo(expected, 4);
+      expect(s.px + s.dx).toBeCloseTo(70, 4);
+      expect(s.py + s.dy).toBeCloseTo(70, 4);
+      // straight out of a side every metric agrees
+      expect(sample(sdf, 50, 10).d).toBeCloseTo(19.5, 4);
+      // inside, the nearest side
+      expect(sample(sdf, 40, 50).d).toBeCloseTo(-10.5, 4);
+    }
+  });
+
+  it('keeps signs and inside shape ids independent of the metric, in both curve modes', () => {
+    const paths = [
+      { d: 'M50 85 C10 55 5 30 25 18 C40 10 50 25 50 30 C50 25 60 10 75 18 C95 30 90 55 50 85 Z' },
+      { d: 'M10 10 Q50 -10 90 10 T90 40 L60 30 Z', fillRule: 'evenodd' as const }
+    ];
+    for (const mode of ['exact', 'polyline'] as const) {
+      const scene = sceneInMode(paths, mode);
+      const base = computeSdf(scene, { width: 60 });
+      for (const metric of ['manhattan', 'chebyshev'] as const) {
+        const sdf = computeSdf(scene, { width: 60, metric });
+        for (let k = 0; k < sdf.width * sdf.height; k++) {
+          const a = sdf.data[k * SDF_STRIDE];
+          const e = base.data[k * SDF_STRIDE];
+          expect(Math.sign(a)).toBe(Math.sign(e));
+          // l1 >= l2 >= l-infinity, and l1 <= sqrt(2) l2, l-infinity >= l2 / sqrt(2)
+          if (metric === 'manhattan') {
+            expect(Math.abs(a)).toBeGreaterThanOrEqual(Math.abs(e) - 1e-4);
+            expect(Math.abs(a)).toBeLessThanOrEqual(Math.SQRT2 * Math.abs(e) + 1e-4);
+          } else {
+            expect(Math.abs(a)).toBeLessThanOrEqual(Math.abs(e) + 1e-4);
+            expect(Math.abs(a)).toBeGreaterThanOrEqual(Math.abs(e) / Math.SQRT2 - 1e-4);
+          }
+          // inside, the id is the containing shape; outside it is the owner of the nearest edge, which depends on the metric
+          if (e < 0) expect(sdf.data[k * SDF_STRIDE + 3]).toBe(base.data[k * SDF_STRIDE + 3]);
+        }
+      }
+    }
+  });
+
+  it('stores a nearest point that realises the distance', () => {
+    const scene = sceneInMode(
+      [{ d: 'M50 85 C10 55 5 30 25 18 C40 10 50 25 50 30 C50 25 60 10 75 18 C95 30 90 55 50 85 Z' }],
+      'exact'
+    );
+    for (const metric of ['manhattan', 'chebyshev'] as const) {
+      const sdf = computeSdf(scene, { width: 50, metric });
+      for (let k = 0; k < sdf.width * sdf.height; k++) {
+        const o = k * SDF_STRIDE;
+        const dx = Math.abs(sdf.data[o + 1]);
+        const dy = Math.abs(sdf.data[o + 2]);
+        const d = metric === 'manhattan' ? dx + dy : Math.max(dx, dy);
+        expect(d).toBeCloseTo(Math.abs(sdf.data[o]), 3);
+      }
+    }
+  });
+
+  it('gives the same rows when computed in bands', () => {
+    const scene = sceneInMode([{ d: 'M80 50 A30 30 0 0 1 20 50 A30 30 0 0 1 80 50 Z' }], 'exact');
+    for (const metric of ['manhattan', 'chebyshev'] as const) {
+      const layout = computeLayout(scene.bounds, { width: 48 });
+      const prepared = prepareScene(scene, metric);
+      const whole = computeRows(prepared, layout, 0, layout.height);
+      const joined = new Float32Array(whole.length);
+      const top = computeRows(prepared, layout, 0, 13);
+      joined.set(top);
+      joined.set(computeRows(prepared, layout, 13, layout.height), top.length);
+      expect(joined).toEqual(whole);
+    }
   });
 });

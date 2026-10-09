@@ -23,7 +23,7 @@ export const useSdfComputation = () => {
       try {
         setStatus({ state: 'computing', progress: 0 });
         const geometry = parseSvg(svgText);
-        const options = { width: compute.width, padding: compute.padding / 100 };
+        const options = { width: compute.width, padding: compute.padding / 100, metric: compute.metric };
         // flatten curves to a fraction of a buffer pixel
         const { pixelSize } = computeLayout(geometry.bounds, options);
         const scene = flattenGeometry(geometry, compute.tolerance * pixelSize, compute.curves);

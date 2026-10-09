@@ -5,6 +5,8 @@ import vertexSource from './shaders/fullscreen.vert.glsl?raw';
 import fragmentSource from './shaders/post.frag.glsl?raw';
 
 const MODE_INDEX = { ramp: 0, polar: 1, shape: 2, grayscale: 3 } as const;
+const PALETTE_INDEX = { hsv: 0, oklch: 1, gradient: 2 } as const;
+const METRIC_INDEX = { euclidean: 0, manhattan: 1, chebyshev: 2 } as const;
 const RAMP_SAMPLES = 256;
 const COLORS_WIDTH = 1024;
 
@@ -31,6 +33,13 @@ const UNIFORMS = [
   'uPolarOutside',
   'uRadialLines',
   'uRadialWidth',
+  'uPolarPalette',
+  'uTiles',
+  'uTilesMosaic',
+  'uTileAngleBands',
+  'uTileSpacing',
+  'uTileContrast',
+  'uMetric',
   'uShapeRange',
   'uShadeInside',
   'uFadeOutside',
@@ -78,6 +87,28 @@ const createProgram = (gl: WebGL2RenderingContext) => {
 const rgb = (color: string): [number, number, number] => {
   const c = parseColor(color) ?? [0, 0, 0, 1];
   return [c[0], c[1], c[2]];
+};
+
+/**
+ * Samples cyclic stops into RAMP_SAMPLES rgba8 pixels, pixel i holding the colour at (i + 0.5) / RAMP_SAMPLES,
+ * so a repeating texture interpolates across the wrap from the last stop back to the first.
+ */
+const sampleCyclic = (stops: RampStop[], out: Uint8Array, offset: number) => {
+  const sorted = [...stops].map((s) => ({ pos: ((s.pos % 1) + 1) % 1, c: rgb(s.color) })).sort((a, b) => a.pos - b.pos);
+  if (!sorted.length) sorted.push({ pos: 0, c: [0, 0, 0] });
+  for (let i = 0; i < RAMP_SAMPLES; i++) {
+    const t = (i + 0.5) / RAMP_SAMPLES;
+    // the stop at or before t, wrapping to the last one, and the one after it, wrapping to the first
+    let k = sorted.length - 1;
+    for (let j = 0; j < sorted.length; j++) if (sorted[j].pos <= t) k = j;
+    const a = sorted[k];
+    const b = sorted[(k + 1) % sorted.length];
+    const start = a.pos <= t ? a.pos : a.pos - 1;
+    const end = b.pos > start ? b.pos : b.pos + 1;
+    const f = end > start ? (t - start) / (end - start) : 0;
+    for (let ch = 0; ch < 3; ch++) out[offset + i * 4 + ch] = Math.round((a.c[ch] + (b.c[ch] - a.c[ch]) * f) * 255);
+    out[offset + i * 4 + 3] = 255;
+  }
 };
 
 /** samples the stops into RAMP_SAMPLES rgba8 pixels, interpolating in srgb */
@@ -136,6 +167,8 @@ export class SdfRenderer {
     };
     this.sdfTexture = texture(gl.NEAREST);
     this.rampTexture = texture(gl.LINEAR);
+    // the cyclic polar row wraps around; the two plain ramps are sampled half a texel inside and never reach the wrap
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     this.colorTexture = texture(gl.NEAREST);
   }
 
@@ -167,15 +200,16 @@ export class SdfRenderer {
 
   setSettings(settings: PostSettings) {
     this.settings = settings;
-    const key = JSON.stringify([settings.ramp.inside, settings.ramp.outside]);
+    const key = JSON.stringify([settings.ramp.inside, settings.ramp.outside, settings.polar.stops]);
     if (key !== this.rampKey) {
       this.rampKey = key;
-      const pixels = new Uint8Array(RAMP_SAMPLES * 2 * 4);
+      const pixels = new Uint8Array(RAMP_SAMPLES * 3 * 4);
       sampleRamp(settings.ramp.inside, pixels, 0);
       sampleRamp(settings.ramp.outside, pixels, RAMP_SAMPLES * 4);
+      sampleCyclic(settings.polar.stops, pixels, RAMP_SAMPLES * 8);
       const gl = this.gl;
       gl.bindTexture(gl.TEXTURE_2D, this.rampTexture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, RAMP_SAMPLES, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, RAMP_SAMPLES, 3, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     }
     this.requestRender();
   }
@@ -302,6 +336,13 @@ export class SdfRenderer {
     gl.uniform4f(u.uPolarOutside, p.outside.satNear, p.outside.satFar, p.outside.valNear, p.outside.valFar);
     gl.uniform1f(u.uRadialLines, p.radialLines);
     gl.uniform1f(u.uRadialWidth, p.radialWidth);
+    gl.uniform1i(u.uPolarPalette, PALETTE_INDEX[p.palette]);
+    gl.uniform1i(u.uTiles, p.tiles.enabled ? 1 : 0);
+    gl.uniform1i(u.uTilesMosaic, p.tiles.style === 'mosaic' ? 1 : 0);
+    gl.uniform1f(u.uTileAngleBands, Math.max(1, Math.round(p.tiles.angleBands)));
+    gl.uniform1f(u.uTileSpacing, p.tiles.distanceSpacing * unit);
+    gl.uniform1f(u.uTileContrast, p.tiles.contrast);
+    gl.uniform1i(u.uMetric, METRIC_INDEX[sdf.metric ?? 'euclidean']);
 
     gl.uniform1f(u.uShapeRange, s.shape.range * unit);
     gl.uniform1f(u.uShadeInside, s.shape.shadeInside);

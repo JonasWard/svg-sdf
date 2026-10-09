@@ -17,7 +17,10 @@ Every push to the default branch is tested, built and published to GitHub Pages 
    - **exact** (default): curves stay cubic Béziers. They are split into pieces monotone in x and y, and distances are measured to the true curve, so the direction to the nearest edge varies smoothly along it.
    - **polyline**: curves are flattened to within a fraction of a buffer pixel. This is cheaper, but the direction is constant along each straight piece, which shows up as bands in polar mode.
 2. **Distance** (`src/lib/sdf`): for each buffer pixel centre:
-   - the exact distance to the nearest edge (line or curve piece), found through a BVH;
+   - the exact distance to the nearest edge (line or curve piece), found through a BVH, under one of three metrics:
+     - **Euclidean**: the straight-line distance, with rounded iso-lines.
+     - **Manhattan** (L1): the sum of the x and y offsets, with diamond iso-lines.
+     - **Chebyshev** (L∞): the larger of the two offsets, with square iso-lines. It is computed as half the Manhattan distance in coordinates rotated by 45°.
    - the sign, from a scanline inside test that honours `nonzero` and `evenodd`;
    - the vector to the nearest edge point;
    - the shape id.
@@ -25,7 +28,13 @@ Every push to the default branch is tested, built and published to GitHub Pages 
    Rows are split across a pool of web workers.
 
 3. **Post-process** (`src/render`): the `Float32Array` buffer is uploaded once as an `RGBA32F` texture. A fragment shader then colours it in one of these modes:
-   - **Polar**: hue from the direction to the nearest edge, saturation and value from the distance, optional radial lines.
+   - **Polar**: hue from the direction to the nearest edge, the colour's strength from the distance. The hue comes from one of three palettes:
+     - **HSV**: a rainbow.
+     - **OKLCH**: a perceptually even hue wheel; distance drives chroma and lightness.
+     - **Gradient**: your own cyclic stops.
+
+     Optional radial lines, and tiles over the direction × distance plane: a checker, or a mosaic of flat tiles.
+
    - **Ramps**: separate inside and outside colour ramps.
    - **Shapes**: the SVG fill of the pixel's shape, shaded by distance.
    - **Raw**: the grey-scale field.
@@ -40,7 +49,7 @@ Every push to the default branch is tested, built and published to GitHub Pages 
 
 | channel    | meaning                                                                                                         |
 | ---------- | --------------------------------------------------------------------------------------------------------------- |
-| `distance` | signed distance to the nearest edge in SVG units, negative inside                                               |
+| `distance` | signed distance to the nearest edge in SVG units under the buffer's metric, negative inside                     |
 | `dx`, `dy` | vector from the pixel centre to that nearest edge point                                                         |
 | `shape`    | topmost filled shape containing the pixel, otherwise the shape owning the nearest edge, `-1` for an empty scene |
 
@@ -48,7 +57,7 @@ The pixel `(i, j)` has its centre at `region.min + (i + 0.5, j + 0.5) * pixelSiz
 
 Exports:
 
-- **`.sdf` binary**: `SSDF` magic, version, JSON header, then little-endian float32 data; see `src/lib/io/sdfFile.ts`.
+- **`.sdf` binary**: `SSDF` magic, version, JSON header (including the metric), then little-endian float32 data; see `src/lib/io/sdfFile.ts`.
 - **PNG** of the view or of the whole buffer.
 - **Settings JSON**.
 

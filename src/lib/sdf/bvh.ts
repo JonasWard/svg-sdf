@@ -1,13 +1,14 @@
 import { CurvePoint, nearestOnCubic } from './bezier';
 import { EDGE_LINE, EDGE_STRIDE, Edges } from './edges';
+import { L1Point, nearestL1Cubic, nearestL1Line } from './metrics';
 
 const LEAF_SIZE = 4;
 const STACK_SIZE = 256;
 
 /** result of a nearest query, reused between queries to avoid allocations */
 export interface Nearest {
-  /** squared distance */
-  d2: number;
+  /** squared euclidean distance, or the manhattan distance for an L1 hierarchy */
+  score: number;
   /** closest point on the edge */
   x: number;
   y: number;
@@ -16,9 +17,10 @@ export interface Nearest {
 }
 
 /**
- * Bounding volume hierarchy over edges (lines and monotone cubics), answering exact nearest-edge queries.
+ * Bounding volume hierarchy over edges (lines and cubics), answering exact nearest-edge queries
+ * under the euclidean metric, or under the manhattan metric when built with `l1`.
  * Median split along the longest axis of the centroids, leaves of up to four edges.
- * Boxes come from the edge endpoints, which is exact for lines and for monotone cubic pieces.
+ * Boxes hold all control points, which by the convex hull property contain the curve.
  */
 export class SegmentBvh {
   private readonly nodeBox: Float64Array; // minX, minY, maxX, maxY per node
@@ -28,10 +30,14 @@ export class SegmentBvh {
   private readonly segKind: Uint8Array; // edge kind in leaf order
   private readonly segId: Int32Array; // leaf order -> original edge index
   private readonly curvePoint: CurvePoint = { d2: 0, x: 0, y: 0, t: 0 };
+  private readonly l1Point: L1Point = { d: 0, x: 0, y: 0 };
   private readonly stack = new Int32Array(STACK_SIZE);
   readonly nodeCount: number;
 
-  constructor(edges: Edges) {
+  constructor(
+    edges: Edges,
+    private readonly l1 = false
+  ) {
     const n = edges.count;
     const c = edges.coords;
     const S = EDGE_STRIDE;
@@ -79,10 +85,10 @@ export class SegmentBvh {
       let cMaxY = -Infinity;
       for (let i = start; i < end; i++) {
         const s = order[i] * S;
-        minX = Math.min(minX, c[s], c[s + 6]);
-        maxX = Math.max(maxX, c[s], c[s + 6]);
-        minY = Math.min(minY, c[s + 1], c[s + 7]);
-        maxY = Math.max(maxY, c[s + 1], c[s + 7]);
+        minX = Math.min(minX, c[s], c[s + 2], c[s + 4], c[s + 6]);
+        maxX = Math.max(maxX, c[s], c[s + 2], c[s + 4], c[s + 6]);
+        minY = Math.min(minY, c[s + 1], c[s + 3], c[s + 5], c[s + 7]);
+        maxY = Math.max(maxY, c[s + 1], c[s + 3], c[s + 5], c[s + 7]);
         cMinX = Math.min(cMinX, cx[order[i]]);
         cMaxX = Math.max(cMaxX, cx[order[i]]);
         cMinY = Math.min(cMinY, cy[order[i]]);
@@ -123,7 +129,7 @@ export class SegmentBvh {
 
   /** the nearest point on any edge to (px, py); `hint` (an original edge index) seeds the search bound */
   nearest(px: number, py: number, out: Nearest, hint = -1): Nearest {
-    out.d2 = Infinity;
+    out.score = Infinity;
     out.segment = -1;
     if (!this.segId.length) return out;
     if (hint >= 0) {
@@ -137,7 +143,7 @@ export class SegmentBvh {
     stack[top++] = 0;
     while (top) {
       const node = stack[--top];
-      if (boxDistance2(box, node, px, py) >= out.d2) continue;
+      if (this.boxScore(box, node, px, py) >= out.score) continue;
       const nb = this.nodeB[node];
       if (nb > 0) {
         const start = this.nodeA[node];
@@ -146,15 +152,15 @@ export class SegmentBvh {
       }
       const l = this.nodeA[node];
       const r = -nb - 1;
-      const dl = boxDistance2(box, l, px, py);
-      const dr = boxDistance2(box, r, px, py);
+      const dl = this.boxScore(box, l, px, py);
+      const dr = this.boxScore(box, r, px, py);
       // push the farther child first so the nearer one is searched first
       if (dl < dr) {
-        if (dr < out.d2) stack[top++] = r;
-        if (dl < out.d2) stack[top++] = l;
+        if (dr < out.score) stack[top++] = r;
+        if (dl < out.score) stack[top++] = l;
       } else {
-        if (dl < out.d2) stack[top++] = l;
-        if (dr < out.d2) stack[top++] = r;
+        if (dl < out.score) stack[top++] = l;
+        if (dr < out.score) stack[top++] = r;
       }
     }
     return out;
@@ -169,48 +175,69 @@ export class SegmentBvh {
     return this.inverse[segment];
   }
 
+  /** lower bound of the score of anything inside the box */
+  private boxScore(box: Float64Array, node: number, px: number, py: number) {
+    const o = node * 4;
+    const dx = Math.max(box[o] - px, 0, px - box[o + 2]);
+    const dy = Math.max(box[o + 1] - py, 0, py - box[o + 3]);
+    return this.l1 ? dx + dy : dx * dx + dy * dy;
+  }
+
   private test(i: number, px: number, py: number, out: Nearest) {
     const s = this.seg;
     const o = i * EDGE_STRIDE;
+    let score: number;
+    let x: number;
+    let y: number;
     if (this.segKind[i] !== EDGE_LINE) {
-      // the endpoint box of a monotone piece is its exact box, skip the curve search when it cannot win
-      const bx = Math.max(Math.min(s[o], s[o + 6]) - px, 0, px - Math.max(s[o], s[o + 6]));
-      const by = Math.max(Math.min(s[o + 1], s[o + 7]) - py, 0, py - Math.max(s[o + 1], s[o + 7]));
-      if (bx * bx + by * by >= out.d2) return;
-      const q = nearestOnCubic(s, o, px, py, this.curvePoint);
-      if (q.d2 < out.d2) {
-        out.d2 = q.d2;
-        out.x = q.x;
-        out.y = q.y;
-        out.segment = this.segId[i];
+      // skip the curve search when the control point box cannot win
+      const bx = Math.max(
+        Math.min(s[o], s[o + 2], s[o + 4], s[o + 6]) - px,
+        0,
+        px - Math.max(s[o], s[o + 2], s[o + 4], s[o + 6])
+      );
+      const by = Math.max(
+        Math.min(s[o + 1], s[o + 3], s[o + 5], s[o + 7]) - py,
+        0,
+        py - Math.max(s[o + 1], s[o + 3], s[o + 5], s[o + 7])
+      );
+      if ((this.l1 ? bx + by : bx * bx + by * by) >= out.score) return;
+      if (this.l1) {
+        const q = nearestL1Cubic(s, o, px, py, this.l1Point);
+        score = q.d;
+        x = q.x;
+        y = q.y;
+      } else {
+        const q = nearestOnCubic(s, o, px, py, this.curvePoint);
+        score = q.d2;
+        x = q.x;
+        y = q.y;
       }
-      return;
+    } else if (this.l1) {
+      const q = nearestL1Line(s, o, px, py, this.l1Point);
+      score = q.d;
+      x = q.x;
+      y = q.y;
+    } else {
+      const ax = s[o];
+      const ay = s[o + 1];
+      const ex = s[o + 6] - ax;
+      const ey = s[o + 7] - ay;
+      const len2 = ex * ex + ey * ey;
+      let t = len2 > 0 ? ((px - ax) * ex + (py - ay) * ey) / len2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      x = ax + t * ex;
+      y = ay + t * ey;
+      score = (x - px) * (x - px) + (y - py) * (y - py);
     }
-    const ax = s[o];
-    const ay = s[o + 1];
-    const ex = s[o + 6] - ax;
-    const ey = s[o + 7] - ay;
-    const len2 = ex * ex + ey * ey;
-    let t = len2 > 0 ? ((px - ax) * ex + (py - ay) * ey) / len2 : 0;
-    t = t < 0 ? 0 : t > 1 ? 1 : t;
-    const qx = ax + t * ex;
-    const qy = ay + t * ey;
-    const d2 = (qx - px) * (qx - px) + (qy - py) * (qy - py);
-    if (d2 < out.d2) {
-      out.d2 = d2;
-      out.x = qx;
-      out.y = qy;
+    if (score < out.score) {
+      out.score = score;
+      out.x = x;
+      out.y = y;
       out.segment = this.segId[i];
     }
   }
 }
-
-const boxDistance2 = (box: Float64Array, node: number, px: number, py: number) => {
-  const o = node * 4;
-  const dx = Math.max(box[o] - px, 0, px - box[o + 2]);
-  const dy = Math.max(box[o + 1] - py, 0, py - box[o + 3]);
-  return dx * dx + dy * dy;
-};
 
 /** partially sorts order[lo..hi] so that order[k] holds the element of rank k by key */
 const quickselect = (order: Int32Array, lo: number, hi: number, k: number, key: Float64Array) => {
