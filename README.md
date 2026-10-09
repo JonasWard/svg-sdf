@@ -9,6 +9,8 @@ bun run test       # unit tests
 bun run build      # typecheck + static build into ./build
 ```
 
+Every push to the default branch is tested, built and published to GitHub Pages by `.github/workflows/deploy.yml`. Pages has to be enabled once, with Settings → Pages → Source set to **GitHub Actions**.
+
 ## How it works
 
 1. **Parse** (`src/lib/svg`): the SVG is read with `DOMParser`. Paths, rects, circles, ellipses, lines, polylines, polygons, groups and `use` are supported, along with transforms, inherited fills, inline styles and simple `<style>` rules. Arcs become cubics, and every curve is flattened to within a fraction of a buffer pixel.
