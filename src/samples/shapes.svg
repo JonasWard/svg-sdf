@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480">
+  <style>.warm { fill: #e4572e } .cool { fill: #17bebb }</style>
+  <rect class="cool" x="60" y="60" width="220" height="160" rx="30"/>
+  <circle class="warm" cx="300" cy="230" r="110" fill-opacity="0.9"/>
+  <g transform="translate(470 150) rotate(25)">
+    <ellipse fill="#ffc914" cx="0" cy="0" rx="110" ry="55"/>
+  </g>
+  <polygon fill="#76b041" points="380,330 560,300 600,430 420,450"/>
+  <polyline fill="none" stroke="#2e282a" points="60,420 140,330 220,420 300,330"/>
+  <line stroke="#2e282a" x1="40" y1="300" x2="160" y2="260"/>
+</svg>

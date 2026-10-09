@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400">
+  <!-- a star with a round hole, the hole comes from the even-odd fill rule -->
+  <path fill="#e0a030" fill-rule="evenodd"
+    d="M170 40 L205 140 L310 140 L225 200 L258 300 L170 238 L82 300 L115 200 L30 140 L135 140 Z
+       M170 160 m-40 0 a40 40 0 1 0 80 0 a40 40 0 1 0 -80 0 Z"/>
+  <!-- a heart from cubic beziers -->
+  <path fill="#c43a52"
+    d="M440 330 C350 260 330 210 350 160 C370 115 425 110 440 160 C455 110 510 115 530 160 C550 210 530 260 440 330 Z"/>
+</svg>
