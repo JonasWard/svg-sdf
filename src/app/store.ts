@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { CurveMode, DEFAULT_METRIC, MetricSpec, SdfBuffer } from '../lib/types';
+import { Backend, BackendPreference } from '../lib/gpu/computer';
 import { DEFAULT_SETTINGS, PostSettings, View } from '../render/settings';
 import { SAMPLES } from '../samples';
 
@@ -12,6 +13,8 @@ export interface ComputeSettings {
   curves: CurveMode;
   /** how distances are measured */
   metric: MetricSpec;
+  /** where the buffer is computed; auto tries webgpu, then webgl, then the cpu */
+  backend: BackendPreference;
   /** curve flattening tolerance in buffer px, polyline mode only */
   tolerance: number;
 }
@@ -23,6 +26,9 @@ export interface Status {
   ms?: number;
   lines?: number;
   curves?: number;
+  /** the backend that computed the buffer, and why preferred ones were skipped */
+  backend?: Backend;
+  notes?: string[];
 }
 
 interface State {
@@ -54,6 +60,7 @@ export const DEFAULT_COMPUTE: ComputeSettings = {
   padding: 15,
   curves: 'exact',
   metric: DEFAULT_METRIC,
+  backend: 'auto',
   tolerance: 0.25
 };
 

@@ -20,6 +20,7 @@
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "@webgpu/types": "0.1.51",
     "jsdom": "25.0.1",
     "typescript": "^5.4.5",
     "vite": "^5.4.3",

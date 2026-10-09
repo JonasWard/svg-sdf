@@ -86,26 +86,19 @@ export const prepareScene = (scene: Scene, spec: MetricSpec | MetricKind = 'eucl
 };
 
 /**
- * Computes rows [rowStart, rowEnd) of the distance field into `out`, which holds exactly those rows.
- * Per pixel centre: the exact distance to the nearest edge, signed by a scanline inside test, the vector to the
- * nearest point and the shape id (see SdfBuffer).
+ * The scanline inside test for rows [rowStart, rowEnd): per pixel centre the topmost filled shape containing it,
+ * or -1 outside every filled shape. Independent of the metric, and cheap next to the nearest-edge search.
  */
-export const computeRows = (
+export const computeInside = (
   prepared: PreparedScene,
   layout: SdfLayout,
   rowStart: number,
   rowEnd: number,
-  out: Float32Array = new Float32Array((rowEnd - rowStart) * layout.width * SDF_STRIDE)
-): Float32Array => {
+  out: Int32Array = new Int32Array((rowEnd - rowStart) * layout.width)
+): Int32Array => {
   const { width, pixelSize, region } = layout;
-  const { segments, bvh, nearestShape, fillRules, byTop, top, bottom } = prepared;
+  const { segments, fillRules, byTop, top, bottom } = prepared;
   const c = segments.coords;
-  const nearest: Nearest = { score: Infinity, x: 0, y: 0, segment: -1 };
-  const { search, matrix: m, inverse: mi, scale, p } = prepared.metric;
-  const empty = segments.count === 0;
-  const far = Math.hypot(region.maxX - region.minX, region.maxY - region.minY);
-
-  // scanline state
   const winding = new Int32Array(fillRules.length);
   const insideList: number[] = [];
   const active: number[] = [];
@@ -138,12 +131,11 @@ export const computeRows = (
     crossOrder.sort((a, b) => crossX[a] - crossX[b]);
     insideList.length = 0;
     let k = 0;
-    let hint = -1;
-    let o = (j - rowStart) * width * SDF_STRIDE;
+    let topmost = -1;
+    let o = (j - rowStart) * width;
 
-    for (let i = 0; i < width; i++, o += SDF_STRIDE) {
+    for (let i = 0; i < width; i++, o++) {
       const px = region.minX + (i + 0.5) * pixelSize;
-
       for (; k < crossOrder.length && crossX[crossOrder[k]] < px; k++) {
         const s = crossSeg[crossOrder[k]];
         const shape = segments.shape[s];
@@ -153,8 +145,42 @@ export const computeRows = (
         if (before === after) continue;
         if (after) insideList.push(shape);
         else insideList.splice(insideList.indexOf(shape), 1);
+        topmost = insideList.length ? Math.max(...insideList) : -1;
       }
+      out[o] = topmost;
+    }
+    // crossings right of the last pixel centre were never applied, start the next row from zero
+    for (const s of crossSeg) winding[segments.shape[s]] = 0;
+  }
+  return out;
+};
 
+/**
+ * Computes rows [rowStart, rowEnd) of the distance field into `out`, which holds exactly those rows.
+ * Per pixel centre: the exact distance to the nearest edge, signed by the scanline inside test, the vector to the
+ * nearest point and the shape id (see SdfBuffer).
+ */
+export const computeRows = (
+  prepared: PreparedScene,
+  layout: SdfLayout,
+  rowStart: number,
+  rowEnd: number,
+  out: Float32Array = new Float32Array((rowEnd - rowStart) * layout.width * SDF_STRIDE)
+): Float32Array => {
+  const { width, pixelSize, region } = layout;
+  const { segments, bvh, nearestShape } = prepared;
+  const nearest: Nearest = { score: Infinity, x: 0, y: 0, segment: -1 };
+  const { search, matrix: m, inverse: mi, scale, p } = prepared.metric;
+  const empty = segments.count === 0;
+  const far = Math.hypot(region.maxX - region.minX, region.maxY - region.minY);
+  const insideIds = computeInside(prepared, layout, rowStart, rowEnd);
+
+  for (let j = rowStart; j < rowEnd; j++) {
+    const py = region.minY + (j + 0.5) * pixelSize;
+    let hint = -1;
+    let o = (j - rowStart) * width * SDF_STRIDE;
+    for (let i = 0; i < width; i++, o += SDF_STRIDE) {
+      const px = region.minX + (i + 0.5) * pixelSize;
       if (empty) {
         out[o] = far;
         out[o + 1] = out[o + 2] = 0;
@@ -170,14 +196,12 @@ export const computeRows = (
       const nx = mi ? mi[0] * nearest.x + mi[1] * nearest.y : nearest.x;
       const ny = mi ? mi[2] * nearest.x + mi[3] * nearest.y : nearest.y;
       hint = nearest.segment;
-      const inside = insideList.length > 0;
-      out[o] = inside ? -distance : distance;
+      const insideId = insideIds[(j - rowStart) * width + i];
+      out[o] = insideId >= 0 ? -distance : distance;
       out[o + 1] = nx - px;
       out[o + 2] = ny - py;
-      out[o + 3] = inside ? Math.max(...insideList) : nearestShape[nearest.segment];
+      out[o + 3] = insideId >= 0 ? insideId : nearestShape[nearest.segment];
     }
-    // crossings right of the last pixel centre were never applied, start the next row from zero
-    for (const s of crossSeg) winding[segments.shape[s]] = 0;
   }
   return out;
 };

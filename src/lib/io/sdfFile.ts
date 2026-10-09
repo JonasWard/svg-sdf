@@ -11,6 +11,7 @@ interface Header {
   pixelSize: number;
   /** a spec; a bare kind in files from before metric shapes, absent before metrics, those are euclidean */
   metric?: SdfBuffer['metric'] | MetricKind;
+  backend?: SdfBuffer['backend'];
   channels: readonly string[];
   colors: SdfBuffer['colors'];
 }
@@ -27,6 +28,7 @@ export const encodeSdf = (sdf: SdfBuffer): ArrayBuffer => {
     region: sdf.region,
     pixelSize: sdf.pixelSize,
     metric: sdf.metric,
+    backend: sdf.backend,
     channels: SDF_CHANNELS,
     colors: sdf.colors
   };
@@ -68,6 +70,7 @@ export const decodeSdf = (buffer: ArrayBuffer): SdfBuffer => {
     region: header.region,
     pixelSize: header.pixelSize,
     metric: toMetricSpec(header.metric),
+    backend: header.backend,
     colors: header.colors,
     data
   };

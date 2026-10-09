@@ -1,5 +1,8 @@
 import { activeRenderer } from './SdfCanvas';
 import { MetricControls } from './MetricControls';
+import { BackendPreference } from '../lib/gpu/computer';
+
+const BACKEND_LABELS = { webgpu: 'WebGPU', webgl: 'WebGL2', cpu: 'CPU' } as const;
 import { NumberField, Section, Segmented, Slider } from './controls';
 import { useStore } from './store';
 
@@ -36,6 +39,15 @@ export const BufferPanel = () => {
         step={1}
         onChange={(padding) => setCompute({ padding })}
       />
+      <label className="control stacked">
+        <span className="label">Compute</span>
+        <select value={compute.backend} onChange={(e) => setCompute({ backend: e.target.value as BackendPreference })}>
+          <option value="auto">Auto (GPU, then CPU)</option>
+          <option value="webgpu">WebGPU compute</option>
+          <option value="webgl">WebGL2 offscreen</option>
+          <option value="cpu">CPU (float64 reference)</option>
+        </select>
+      </label>
       <MetricControls metric={compute.metric} onChange={(metric) => setCompute({ metric })} />
       <div className="control stacked">
         <span className="label">Curves</span>
@@ -72,9 +84,13 @@ export const BufferPanel = () => {
                   (status.lines !== undefined ? ` · ${status.lines.toLocaleString()} lines` : '') +
                   (status.curves ? ` · ${status.curves.toLocaleString()} curves` : '') +
                   (status.ms !== undefined ? ` · ${Math.round(status.ms)} ms` : '') +
+                  (status.backend ? ` · ${BACKEND_LABELS[status.backend]}` : '') +
                   (status.message ? ` · ${status.message}` : '')
                 : ''}
         </span>
+        {status.state === 'done' && status.notes?.length ? (
+          <p className="hint">Fell back: {status.notes.join('; ')}</p>
+        ) : null}
       </div>
     </Section>
   );

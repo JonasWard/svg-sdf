@@ -114,6 +114,8 @@ export interface SdfBuffer extends SdfLayout {
   data: Float32Array;
   /** the metric the distances are measured in */
   metric: MetricSpec;
+  /** where the buffer was computed: the float64 cpu reference, or a float32 gpu kernel */
+  backend?: 'cpu' | 'webgpu' | 'webgl';
   /** display colour per shape index: its fill, else its stroke, else null */
   colors: (RGBA | null)[];
 }

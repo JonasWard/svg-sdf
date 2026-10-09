@@ -3,11 +3,12 @@ import { parseSvg } from '../lib/svg/parse';
 import { flattenGeometry } from '../lib/svg/scene';
 import { computeLayout } from '../lib/sdf/compute';
 import { packEdges } from '../lib/sdf/edges';
-import { CancelledError, SdfWorkerPool } from '../lib/sdf/workerPool';
+import { CancelledError } from '../lib/sdf/workerPool';
+import { SdfComputer } from '../lib/gpu/computer';
 import { useStore } from './store';
 
 const DEBOUNCE_MS = 200;
-let pool: SdfWorkerPool | null = null;
+let computer: SdfComputer | null = null;
 
 /** recomputes the distance buffer whenever the svg or the buffer settings change */
 export const useSdfComputation = () => {
@@ -28,15 +29,15 @@ export const useSdfComputation = () => {
         const { pixelSize } = computeLayout(geometry.bounds, options);
         const scene = flattenGeometry(geometry, compute.tolerance * pixelSize, compute.curves);
         const { lines, curves } = packEdges(scene);
-        pool ??= new SdfWorkerPool();
-        const job = pool.compute(scene, options, (progress) => {
+        computer ??= new SdfComputer();
+        const job = computer.compute(scene, options, compute.backend, (progress) => {
           if (!stale) setStatus({ state: 'computing', progress, lines, curves });
         });
         cancel = job.cancel;
-        const sdf = await job.promise;
+        const { sdf, backend, notes } = await job.promise;
         if (stale) return;
         setSdf(sdf);
-        setStatus({ state: 'done', progress: 1, ms: performance.now() - start, lines, curves });
+        setStatus({ state: 'done', progress: 1, ms: performance.now() - start, lines, curves, backend, notes });
       } catch (e) {
         if (stale || e instanceof CancelledError) return;
         setStatus({ state: 'error', progress: 0, message: e instanceof Error ? e.message : String(e) });

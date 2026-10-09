@@ -131,6 +131,23 @@ export class SegmentBvh {
     }
   }
 
+  /**
+   * The hierarchy as flat arrays, for searches that run elsewhere (the gpu kernels):
+   * per node its box (minX, minY, maxX, maxY), `a` and `b` (a leaf has b > 0 edges starting at a, an inner node has
+   * children a and -b - 1), and the edges in leaf order with their kind and original index.
+   */
+  flatten() {
+    return {
+      nodeCount: this.nodeCount,
+      nodeBox: this.nodeBox,
+      nodeA: this.nodeA,
+      nodeB: this.nodeB,
+      edges: this.seg,
+      kind: this.segKind,
+      edgeId: this.segId
+    };
+  }
+
   /** the nearest point on any edge to (px, py); `hint` (an original edge index) seeds the search bound */
   nearest(px: number, py: number, out: Nearest, hint = -1): Nearest {
     out.score = Infinity;

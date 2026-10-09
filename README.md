@@ -30,7 +30,16 @@ Every push to the default branch is tested, built and published to GitHub Pages 
    - the vector to the nearest edge point;
    - the shape id.
 
-   Rows are split across a pool of web workers.
+   The buffer is computed by one of three backends, chosen with the _Compute_ setting:
+   - **WebGPU**: a compute shader (`src/lib/gpu/sdf.wgsl`).
+   - **WebGL2**: a fragment pass into a float framebuffer on an `OffscreenCanvas` (`src/lib/gpu/sdf.frag.glsl`).
+   - **CPU**: up to 8 web workers in float64, the reference.
+
+   _Auto_ tries WebGPU, then WebGL2, then the CPU. It skips software GPUs such as SwiftShader or llvmpipe, which are slower than the CPU workers.
+
+   Both GPU paths run in a worker, tile by tile. The CPU builds the search tree (BVH) and the inside test and packs them relative to the buffer centre in pixel units, so float32 stays precise even at map-scale coordinates. The GPU runs the nearest-edge search per pixel; every metric and both curve modes run on all three backends.
+
+   GPU buffers match the CPU reference to within about 1e-4 buffer px, with identical signs and shape ids. Only where two edges are exactly equally near can the stored nearest point differ.
 
 3. **Post-process** (`src/render`): the `Float32Array` buffer is uploaded once as an `RGBA32F` texture. A fragment shader then colours it in one of these modes:
    - **Polar**: hue from the direction to the nearest edge, the colour's strength from the distance. The hue comes from one of three palettes:
