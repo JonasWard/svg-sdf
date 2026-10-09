@@ -13,9 +13,11 @@ Every push to the default branch is tested, built and published to GitHub Pages 
 
 ## How it works
 
-1. **Parse** (`src/lib/svg`): the SVG is read with `DOMParser`. Paths, rects, circles, ellipses, lines, polylines, polygons, groups and `use` are supported, along with transforms, inherited fills, inline styles and simple `<style>` rules. Arcs become cubics, and every curve is flattened to within a fraction of a buffer pixel.
+1. **Parse** (`src/lib/svg`): the SVG is read with `DOMParser`. Paths, rects, circles, ellipses, lines, polylines, polygons, groups and `use` are supported, along with transforms, inherited fills, inline styles and simple `<style>` rules. Quadratics and arcs become cubics. Curves then take one of two routes, chosen by the _Curves_ flag (`flattenGeometry(geometry, tolerance, 'exact' | 'polyline')`):
+   - **exact** (default): curves stay cubic Béziers. They are split into pieces monotone in x and y, and distances are measured to the true curve, so the direction to the nearest edge varies smoothly along it.
+   - **polyline**: curves are flattened to within a fraction of a buffer pixel. This is cheaper, but the direction is constant along each straight piece, which shows up as bands in polar mode.
 2. **Distance** (`src/lib/sdf`): for each buffer pixel centre:
-   - the exact distance to the nearest edge segment, found through a BVH;
+   - the exact distance to the nearest edge (line or curve piece), found through a BVH;
    - the sign, from a scanline inside test that honours `nonzero` and `evenodd`;
    - the vector to the nearest edge point;
    - the shape id.

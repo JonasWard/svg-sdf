@@ -46,12 +46,18 @@ export interface Contour {
   closed: boolean;
 }
 
+/** how curves enter the distance field: flattened to polylines, or measured exactly as bezier curves */
+export type CurveMode = 'polyline' | 'exact';
+
 export interface Shape {
   /** null when the shape only contributes edges, it then has no inside */
   fill: RGBA | null;
   stroke: RGBA | null;
   fillRule: FillRule;
+  /** the flattened outline, used in polyline mode */
   contours: Contour[];
+  /** the exact outline, used instead of the contours in exact mode; subpaths of filled shapes are closed */
+  curves?: Subpath[];
 }
 
 /** the flattened svg, what the distance field is computed from */

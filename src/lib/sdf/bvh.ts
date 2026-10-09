@@ -1,4 +1,5 @@
-import { Segments } from './segments';
+import { CurvePoint, nearestOnCubic } from './bezier';
+import { EDGE_LINE, EDGE_STRIDE, Edges } from './edges';
 
 const LEAF_SIZE = 4;
 const STACK_SIZE = 256;
@@ -10,33 +11,37 @@ export interface Nearest {
   /** closest point on the edge */
   x: number;
   y: number;
-  /** index of the segment, into the original Segments, -1 when there are none */
+  /** index of the edge, into the original Edges, -1 when there are none */
   segment: number;
 }
 
 /**
- * Bounding volume hierarchy over line segments, answering exact nearest-segment queries.
- * Median split along the longest axis of the centroids, leaves of up to four segments.
+ * Bounding volume hierarchy over edges (lines and monotone cubics), answering exact nearest-edge queries.
+ * Median split along the longest axis of the centroids, leaves of up to four edges.
+ * Boxes come from the edge endpoints, which is exact for lines and for monotone cubic pieces.
  */
 export class SegmentBvh {
   private readonly nodeBox: Float64Array; // minX, minY, maxX, maxY per node
   private readonly nodeA: Int32Array; // first segment for leaves, left child for inner nodes
   private readonly nodeB: Int32Array; // segment count for leaves (> 0), -(right child) - 1 for inner nodes
-  private readonly seg: Float64Array; // segment coords in leaf order
-  private readonly segId: Int32Array; // leaf order -> original segment index
+  private readonly seg: Float64Array; // edge coords in leaf order
+  private readonly segKind: Uint8Array; // edge kind in leaf order
+  private readonly segId: Int32Array; // leaf order -> original edge index
+  private readonly curvePoint: CurvePoint = { d2: 0, x: 0, y: 0, t: 0 };
   private readonly stack = new Int32Array(STACK_SIZE);
   readonly nodeCount: number;
 
-  constructor(segments: Segments) {
-    const n = segments.count;
-    const c = segments.coords;
+  constructor(edges: Edges) {
+    const n = edges.count;
+    const c = edges.coords;
+    const S = EDGE_STRIDE;
     const order = new Int32Array(n);
     const cx = new Float64Array(n);
     const cy = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       order[i] = i;
-      cx[i] = (c[i * 4] + c[i * 4 + 2]) / 2;
-      cy[i] = (c[i * 4 + 1] + c[i * 4 + 3]) / 2;
+      cx[i] = (c[i * S] + c[i * S + 6]) / 2;
+      cy[i] = (c[i * S + 1] + c[i * S + 7]) / 2;
     }
 
     const maxNodes = Math.max(1, 2 * Math.ceil(n / LEAF_SIZE) * 2);
@@ -73,11 +78,11 @@ export class SegmentBvh {
       let cMaxX = -Infinity;
       let cMaxY = -Infinity;
       for (let i = start; i < end; i++) {
-        const s = order[i] * 4;
-        minX = Math.min(minX, c[s], c[s + 2]);
-        maxX = Math.max(maxX, c[s], c[s + 2]);
-        minY = Math.min(minY, c[s + 1], c[s + 3]);
-        maxY = Math.max(maxY, c[s + 1], c[s + 3]);
+        const s = order[i] * S;
+        minX = Math.min(minX, c[s], c[s + 6]);
+        maxX = Math.max(maxX, c[s], c[s + 6]);
+        minY = Math.min(minY, c[s + 1], c[s + 7]);
+        maxY = Math.max(maxY, c[s + 1], c[s + 7]);
         cMinX = Math.min(cMinX, cx[order[i]]);
         cMaxX = Math.max(cMaxX, cx[order[i]]);
         cMinY = Math.min(cMinY, cy[order[i]]);
@@ -107,12 +112,16 @@ export class SegmentBvh {
     this.nodeBox = box;
     this.nodeA = a;
     this.nodeB = b;
-    this.seg = new Float64Array(n * 4);
+    this.seg = new Float64Array(n * S);
+    this.segKind = new Uint8Array(n);
     this.segId = order;
-    for (let i = 0; i < n; i++) this.seg.set(c.subarray(order[i] * 4, order[i] * 4 + 4), i * 4);
+    for (let i = 0; i < n; i++) {
+      this.seg.set(c.subarray(order[i] * S, order[i] * S + S), i * S);
+      this.segKind[i] = edges.kind[order[i]];
+    }
   }
 
-  /** the nearest point on any segment to (px, py); `hint` (an original segment index) seeds the search bound */
+  /** the nearest point on any edge to (px, py); `hint` (an original edge index) seeds the search bound */
   nearest(px: number, py: number, out: Nearest, hint = -1): Nearest {
     out.d2 = Infinity;
     out.segment = -1;
@@ -162,10 +171,25 @@ export class SegmentBvh {
 
   private test(i: number, px: number, py: number, out: Nearest) {
     const s = this.seg;
-    const ax = s[i * 4];
-    const ay = s[i * 4 + 1];
-    const ex = s[i * 4 + 2] - ax;
-    const ey = s[i * 4 + 3] - ay;
+    const o = i * EDGE_STRIDE;
+    if (this.segKind[i] !== EDGE_LINE) {
+      // the endpoint box of a monotone piece is its exact box, skip the curve search when it cannot win
+      const bx = Math.max(Math.min(s[o], s[o + 6]) - px, 0, px - Math.max(s[o], s[o + 6]));
+      const by = Math.max(Math.min(s[o + 1], s[o + 7]) - py, 0, py - Math.max(s[o + 1], s[o + 7]));
+      if (bx * bx + by * by >= out.d2) return;
+      const q = nearestOnCubic(s, o, px, py, this.curvePoint);
+      if (q.d2 < out.d2) {
+        out.d2 = q.d2;
+        out.x = q.x;
+        out.y = q.y;
+        out.segment = this.segId[i];
+      }
+      return;
+    }
+    const ax = s[o];
+    const ay = s[o + 1];
+    const ex = s[o + 6] - ax;
+    const ey = s[o + 7] - ay;
     const len2 = ex * ex + ey * ey;
     let t = len2 > 0 ? ((px - ax) * ex + (py - ay) * ey) / len2 : 0;
     t = t < 0 ? 0 : t > 1 ? 1 : t;

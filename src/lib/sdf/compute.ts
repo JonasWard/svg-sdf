@@ -1,6 +1,7 @@
 import { Bounds, FillRule, RGBA, Scene, SDF_STRIDE, SdfBuffer, SdfLayout } from '../types';
+import { crossingX } from './bezier';
 import { Nearest, SegmentBvh } from './bvh';
-import { packSegments, Segments } from './segments';
+import { EDGE_LINE, EDGE_STRIDE, Edges, packEdges } from './edges';
 
 export interface SdfOptions {
   /** buffer width in pixels, the height follows from the aspect ratio of the region */
@@ -28,7 +29,7 @@ export const computeLayout = (bounds: Bounds, options: SdfOptions): SdfLayout =>
 
 /** everything the per-row work needs, built once per scene (and once per worker) */
 export interface PreparedScene {
-  segments: Segments;
+  segments: Edges;
   bvh: SegmentBvh;
   fillRules: FillRule[];
   /** filled segments ordered by their top y, for the scanline inside test */
@@ -38,15 +39,17 @@ export interface PreparedScene {
 }
 
 export const prepareScene = (scene: Scene): PreparedScene => {
-  const segments = packSegments(scene);
+  const segments = packEdges(scene);
   const c = segments.coords;
+  const S = EDGE_STRIDE;
   const filled: number[] = [];
-  for (let i = 0; i < segments.count; i++) if (segments.filled[i] && c[i * 4 + 1] !== c[i * 4 + 3]) filled.push(i);
+  // edges are monotone in y, so a horizontal one never crosses a scanline
+  for (let i = 0; i < segments.count; i++) if (segments.filled[i] && c[i * S + 1] !== c[i * S + 7]) filled.push(i);
   const top = new Float64Array(segments.count);
   const bottom = new Float64Array(segments.count);
   for (let i = 0; i < segments.count; i++) {
-    top[i] = Math.min(c[i * 4 + 1], c[i * 4 + 3]);
-    bottom[i] = Math.max(c[i * 4 + 1], c[i * 4 + 3]);
+    top[i] = Math.min(c[i * S + 1], c[i * S + 7]);
+    bottom[i] = Math.max(c[i * S + 1], c[i * S + 7]);
   }
   filled.sort((a, b) => top[a] - top[b]);
   return {
@@ -99,10 +102,12 @@ export const computeRows = (
       }
     crossX.length = crossSeg.length = crossOrder.length = 0;
     for (const s of active) {
-      const ay = c[s * 4 + 1];
-      const by = c[s * 4 + 3];
-      const ax = c[s * 4];
-      crossX.push(ax + ((py - ay) * (c[s * 4 + 2] - ax)) / (by - ay));
+      const o = s * EDGE_STRIDE;
+      if (segments.kind[s] === EDGE_LINE) {
+        const ay = c[o + 1];
+        const ax = c[o];
+        crossX.push(ax + ((py - ay) * (c[o + 6] - ax)) / (c[o + 7] - ay));
+      } else crossX.push(crossingX(c, o, py));
       crossSeg.push(s);
       crossOrder.push(crossOrder.length);
     }
@@ -119,7 +124,7 @@ export const computeRows = (
         const s = crossSeg[crossOrder[k]];
         const shape = segments.shape[s];
         const before = isInside(winding[shape], fillRules[shape]);
-        winding[shape] += c[s * 4 + 3] > c[s * 4 + 1] ? 1 : -1;
+        winding[shape] += c[s * EDGE_STRIDE + 7] > c[s * EDGE_STRIDE + 1] ? 1 : -1;
         const after = isInside(winding[shape], fillRules[shape]);
         if (before === after) continue;
         if (after) insideList.push(shape);

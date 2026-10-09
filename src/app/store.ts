@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { SdfBuffer } from '../lib/types';
+import { CurveMode, SdfBuffer } from '../lib/types';
 import { DEFAULT_SETTINGS, PostSettings, View } from '../render/settings';
 import { SAMPLES } from '../samples';
 
@@ -8,7 +8,9 @@ export interface ComputeSettings {
   width: number;
   /** margin around the svg, percent of its larger side */
   padding: number;
-  /** curve flattening tolerance in buffer px */
+  /** exact bezier distances, or curves flattened to polylines */
+  curves: CurveMode;
+  /** curve flattening tolerance in buffer px, polyline mode only */
   tolerance: number;
 }
 
@@ -17,7 +19,8 @@ export interface Status {
   progress: number;
   message?: string;
   ms?: number;
-  segments?: number;
+  lines?: number;
+  curves?: number;
 }
 
 interface State {
@@ -44,7 +47,7 @@ interface State {
   setFitOnNextSdf: (fit: boolean) => void;
 }
 
-export const DEFAULT_COMPUTE: ComputeSettings = { width: 1024, padding: 15, tolerance: 0.25 };
+export const DEFAULT_COMPUTE: ComputeSettings = { width: 1024, padding: 15, curves: 'exact', tolerance: 0.25 };
 
 export const useStore = create<State>((set) => ({
   svgName: SAMPLES[0].name,

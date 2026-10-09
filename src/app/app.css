@@ -214,6 +214,14 @@ select {
   accent-color: var(--accent);
 }
 
+.control .span-2 {
+  grid-column: span 2;
+}
+
+.control .span-2 .segmented {
+  margin: 0;
+}
+
 .control.toggle {
   display: flex;
   gap: 6px;

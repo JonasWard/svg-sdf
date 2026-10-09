@@ -1,5 +1,5 @@
 import { activeRenderer } from './SdfCanvas';
-import { NumberField, Section, Slider } from './controls';
+import { NumberField, Section, Segmented, Slider } from './controls';
 import { useStore } from './store';
 
 const RESOLUTIONS = [256, 512, 1024, 2048, 4096];
@@ -35,14 +35,27 @@ export const BufferPanel = () => {
         step={1}
         onChange={(padding) => setCompute({ padding })}
       />
-      <Slider
-        label="Curve tolerance px"
-        value={compute.tolerance}
-        min={0.02}
-        max={2}
-        step={0.01}
-        onChange={(tolerance) => setCompute({ tolerance })}
-      />
+      <div className="control">
+        <span className="label">Curves</span>
+        <div className="span-2">
+          <Segmented
+            options={['exact', 'polyline'] as const}
+            value={compute.curves}
+            labels={{ exact: 'Exact', polyline: 'Polyline' }}
+            onChange={(curves) => setCompute({ curves })}
+          />
+        </div>
+      </div>
+      {compute.curves === 'polyline' && (
+        <Slider
+          label="Curve tolerance px"
+          value={compute.tolerance}
+          min={0.02}
+          max={2}
+          step={0.01}
+          onChange={(tolerance) => setCompute({ tolerance })}
+        />
+      )}
       <div className={`status ${status.state}`}>
         {status.state === 'computing' && (
           <div className="progress">
@@ -56,7 +69,8 @@ export const BufferPanel = () => {
               ? `computing… ${Math.round(status.progress * 100)}%`
               : sdf
                 ? `${sdf.width} × ${sdf.height}` +
-                  (status.segments !== undefined ? ` · ${status.segments.toLocaleString()} segments` : '') +
+                  (status.lines !== undefined ? ` · ${status.lines.toLocaleString()} lines` : '') +
+                  (status.curves ? ` · ${status.curves.toLocaleString()} curves` : '') +
                   (status.ms !== undefined ? ` · ${Math.round(status.ms)} ms` : '') +
                   (status.message ? ` · ${status.message}` : '')
                 : ''}

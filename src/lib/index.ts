@@ -4,6 +4,8 @@ export { parsePathData, flattenSubpaths } from './svg/pathData';
 export { parseColor } from './svg/color';
 export { flattenGeometry } from './svg/scene';
 export { computeSdf, computeLayout, computeRows, prepareScene } from './sdf/compute';
+export { packEdges } from './sdf/edges';
+export { nearestOnCubic, monotonePieces } from './sdf/bezier';
 export type { SdfOptions } from './sdf/compute';
 export { SdfWorkerPool, CancelledError } from './sdf/workerPool';
 export type { SdfJob } from './sdf/workerPool';
