@@ -62,8 +62,8 @@ export const BufferPanel = () => {
         <Slider
           label="Curve tolerance px"
           value={compute.tolerance}
-          min={0.02}
-          max={2}
+          min={0.01}
+          max={100}
           step={0.01}
           onChange={(tolerance) => setCompute({ tolerance })}
         />
@@ -78,15 +78,15 @@ export const BufferPanel = () => {
           {status.state === 'error'
             ? status.message
             : status.state === 'computing'
-              ? `computing… ${Math.round(status.progress * 100)}%`
-              : sdf
-                ? `${sdf.width} × ${sdf.height}` +
-                  (status.lines !== undefined ? ` · ${status.lines.toLocaleString()} lines` : '') +
-                  (status.curves ? ` · ${status.curves.toLocaleString()} curves` : '') +
-                  (status.ms !== undefined ? ` · ${Math.round(status.ms)} ms` : '') +
-                  (status.backend ? ` · ${BACKEND_LABELS[status.backend]}` : '') +
-                  (status.message ? ` · ${status.message}` : '')
-                : ''}
+            ? `computing… ${Math.round(status.progress * 100)}%`
+            : sdf
+            ? `${sdf.width} × ${sdf.height}` +
+              (status.lines !== undefined ? ` · ${status.lines.toLocaleString()} lines` : '') +
+              (status.curves ? ` · ${status.curves.toLocaleString()} curves` : '') +
+              (status.ms !== undefined ? ` · ${Math.round(status.ms)} ms` : '') +
+              (status.backend ? ` · ${BACKEND_LABELS[status.backend]}` : '') +
+              (status.message ? ` · ${status.message}` : '')
+            : ''}
         </span>
         {status.state === 'done' && status.notes?.length ? (
           <p className="hint">Fell back: {status.notes.join('; ')}</p>
