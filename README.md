@@ -77,6 +77,8 @@ Exports:
 - **PNG** of the view or of the whole buffer.
 - **Settings JSON**.
 
+The settings and the view are also kept in the page url (`?s=…`), packed with [densing](https://www.npmjs.com/package/densing) into about a hundred url-safe characters (`src/app/urlSettings.ts`), so a link reopens the same picture. The svg itself is not part of it.
+
 ## Library use
 
 ```ts
