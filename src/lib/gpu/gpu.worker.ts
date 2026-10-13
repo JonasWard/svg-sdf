@@ -21,7 +21,7 @@ export type GpuRequest =
 
 export type GpuResponse =
   | { type: 'progress'; job: number; fraction: number }
-  | { type: 'result'; job: number; data: Float32Array }
+  | { type: 'result'; job: number; data: Float32Array; device: string; software: boolean }
   /** unsupported: the backend cannot run here at all; software: it runs, but on a software renderer; failed: on this scene */
   | { type: 'error'; job: number; message: string; reason: 'unsupported' | 'software' | 'failed' };
 
@@ -75,7 +75,7 @@ const run = async (msg: Extract<GpuRequest, { type: 'compute' }>) => {
       (fraction) => post({ type: 'progress', job, fraction }),
       stop
     );
-    post({ type: 'result', job, data }, [data.buffer]);
+    post({ type: 'result', job, data, device: kernel.description, software: kernel.software }, [data.buffer]);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     // a lost device or context is gone for good, start fresh next time

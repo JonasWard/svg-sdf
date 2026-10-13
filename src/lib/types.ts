@@ -116,6 +116,10 @@ export interface SdfBuffer extends SdfLayout {
   metric: MetricSpec;
   /** where the buffer was computed: the float64 cpu reference, or a float32 gpu kernel */
   backend?: 'cpu' | 'webgpu' | 'webgl';
+  /** the gpu a gpu backend ran on, as the browser names it */
+  device?: string;
+  /** whether that gpu is a software renderer */
+  software?: boolean;
   /** display colour per shape index: its fill, else its stroke, else null */
   colors: (RGBA | null)[];
 }

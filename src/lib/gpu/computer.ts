@@ -54,7 +54,16 @@ class GpuRunner {
         if (msg.job !== job) return;
         if (msg.type === 'progress') onProgress?.(msg.fraction);
         else if (msg.type === 'error') rej(new BackendError(msg.message, msg.reason));
-        else resolve({ ...layout, data: msg.data, metric, colors: sceneColors(scene), backend });
+        else
+          resolve({
+            ...layout,
+            data: msg.data,
+            metric,
+            colors: sceneColors(scene),
+            backend,
+            device: msg.device,
+            software: msg.software
+          });
       };
       worker.onerror = (event) => rej(new BackendError(event.message || 'gpu worker failed', 'unsupported'));
       worker.postMessage({ type: 'compute', job, backend, scene, layout, metric, allowSoftware } satisfies GpuRequest);

@@ -3,12 +3,13 @@ import { GpuBackend } from '../lib/gpu/kernel';
 import { computeLayout, computeSdf } from '../lib/sdf/compute';
 import { parseSvg } from '../lib/svg/parse';
 import { flattenGeometry } from '../lib/svg/scene';
-import { CurveMode, MetricSpec, SDF_STRIDE, SdfBuffer, toMetricSpec } from '../lib/types';
+import { Bounds, CurveMode, MetricSpec, SDF_STRIDE, SdfBuffer, toMetricSpec } from '../lib/types';
 import { parseColor } from '../lib/svg/color';
 import { PRESETS } from '../render/presets';
 import { SdfRenderer } from '../render/renderer';
 import { DEFAULT_SETTINGS, PostSettings } from '../render/settings';
 import { merge } from './files';
+import { BenchmarkSizes, runBenchmark } from './benchmark';
 
 interface CompareOptions {
   width: number;
@@ -62,23 +63,35 @@ interface RenderOptions extends CompareOptions {
   regionColors?: string[];
   /** device px per css px for the image: line widths in the settings are css px */
   lineScale?: number;
+  /** only compute this part of the svg, in svg units, for detail images; padding defaults to 0 then */
+  region?: Bounds;
+  /** how closely polylines follow curves, in buffer px */
+  tolerance?: number;
+  /**
+   * Renders how far the distances differ from a second computation with these curve settings instead of the field
+   * itself: the difference in buffer px, divided by `max` and clamped, replaces the distance (keeping its sign).
+   */
+  difference?: { curves?: CurveMode; tolerance?: number; max: number };
 }
 
 let renderer: SdfRenderer | null = null;
 const buffers = new Map<string, SdfBuffer>();
 
-/**
- * Renders the whole buffer of an svg to a png, one image pixel per buffer pixel, and returns it as a data url.
- * Buffers are cached per svg and compute options, so styles that share a metric compute once.
- */
-const render = async (svgText: string, options: RenderOptions) => {
+/** the buffer of an svg, cached per svg and compute options, so styles that share a metric compute once */
+const computeBuffer = (svgText: string, options: RenderOptions, curves: CurveMode, tolerance: number) => {
   const metric = toMetricSpec(options.metric);
-  const sdfOptions = { width: options.width, padding: options.padding ?? 0.15, metric };
+  const sdfOptions = {
+    width: options.width,
+    padding: options.padding ?? (options.region ? 0 : 0.15),
+    region: options.region,
+    metric
+  };
   const key = JSON.stringify([
     svgText.length,
     svgText.slice(0, 2000),
     sdfOptions,
-    options.curves,
+    curves,
+    tolerance,
     options.regionColors
   ]);
   let sdf = buffers.get(key);
@@ -91,8 +104,35 @@ const render = async (svgText: string, options: RenderOptions) => {
       );
     }
     const { pixelSize } = computeLayout(geometry.bounds, sdfOptions);
-    sdf = computeSdf(flattenGeometry(geometry, 0.25 * pixelSize, options.curves ?? 'exact'), sdfOptions);
+    sdf = computeSdf(flattenGeometry(geometry, tolerance * pixelSize, curves), sdfOptions);
     buffers.set(key, sdf);
+  }
+  return sdf;
+};
+
+/** the second buffer's distances subtracted from the first, in buffer px over `max`, clamped to 1 */
+const differenceBuffer = (a: SdfBuffer, b: SdfBuffer, max: number): SdfBuffer => {
+  const data = new Float32Array(a.data);
+  // distances in the post settings are percent of the larger side of the region, map `max` to 100
+  const side = Math.max(a.region.maxX - a.region.minX, a.region.maxY - a.region.minY);
+  for (let o = 0; o < data.length; o += SDF_STRIDE) {
+    const px = Math.abs(a.data[o] - b.data[o]) / a.pixelSize;
+    data[o] = (a.data[o] < 0 ? -1 : 1) * Math.min(1, px / max) * side;
+  }
+  return { ...a, data };
+};
+
+/**
+ * Renders the whole buffer of an svg to a png, one image pixel per buffer pixel, and returns it as a data url.
+ */
+const render = async (svgText: string, options: RenderOptions) => {
+  const curves = options.curves ?? 'exact';
+  const tolerance = options.tolerance ?? 0.25;
+  let sdf = computeBuffer(svgText, options, curves, tolerance);
+  if (options.difference) {
+    const { difference } = options;
+    const other = computeBuffer(svgText, options, difference.curves ?? 'polyline', difference.tolerance ?? tolerance);
+    sdf = differenceBuffer(other, sdf, difference.max);
   }
   const base = options.preset ? PRESETS[options.preset] : DEFAULT_SETTINGS;
   if (!base) throw new Error(`unknown preset ${options.preset}`);
@@ -118,5 +158,10 @@ const render = async (svgText: string, options: RenderOptions) => {
 };
 
 export const installDebug = () => {
-  (globalThis as unknown as { svgSdfDebug: unknown }).svgSdfDebug = { compare, render };
+  (globalThis as unknown as { svgSdfDebug: unknown }).svgSdfDebug = {
+    compare,
+    render,
+    bounds: (svgText: string) => parseSvg(svgText).bounds,
+    benchmark: (svgText: string, sizes?: Partial<BenchmarkSizes>) => runBenchmark(svgText, 'debug', () => {}, sizes)
+  };
 };

@@ -41,6 +41,8 @@ Every push to the default branch is tested, built and published to GitHub Pages 
 
    GPU buffers match the CPU reference to within about 1e-4 buffer px, with identical signs and shape ids. Only where two edges are exactly equally near can the stored nearest point differ.
 
+   _Benchmark all backends_ times the loaded SVG on every backend, for each metric at 2048 px and for Euclidean distances at 512 to 4096 px, and downloads the results as JSON. Software GPUs are skipped.
+
 3. **Post-process** (`src/render`): the `Float32Array` buffer is uploaded once as an `RGBA32F` texture. A fragment shader then colours it in one of these modes:
    - **Polar**: hue from the direction to the nearest edge, the colour's strength from the distance. The hue comes from one of three palettes:
      - **HSV**: a rainbow.

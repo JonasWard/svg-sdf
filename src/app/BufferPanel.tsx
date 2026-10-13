@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { activeRenderer } from './SdfCanvas';
 import { MetricControls } from './MetricControls';
 import { BackendPreference } from '../lib/gpu/computer';
+import { runBenchmark } from './benchmark';
+import { baseName, download } from './files';
 
 const BACKEND_LABELS = { webgpu: 'WebGPU', webgl: 'WebGL2', cpu: 'CPU' } as const;
 import { NumberField, Section, Segmented, Slider } from './controls';
@@ -13,7 +16,22 @@ export const BufferPanel = () => {
   const setCompute = useStore((s) => s.setCompute);
   const status = useStore((s) => s.status);
   const sdf = useStore((s) => s.sdf);
+  const svgName = useStore((s) => s.svgName);
+  const svgText = useStore((s) => s.svgText);
   const maxWidth = Math.min(8192, activeRenderer?.maxTextureSize ?? 4096);
+  const [bench, setBench] = useState<{ label: string; progress: number } | null>(null);
+
+  const benchmark = async () => {
+    setBench({ label: 'starting', progress: 0 });
+    try {
+      const report = await runBenchmark(svgText, svgName, (label, progress) => setBench({ label, progress }));
+      const json = JSON.stringify(report, null, 2);
+      download(new Blob([json], { type: 'application/json' }), `${baseName(svgName)}-benchmark.json`);
+      setBench(null);
+    } catch (e) {
+      setBench({ label: e instanceof Error ? e.message : String(e), progress: 0 });
+    }
+  };
 
   return (
     <Section title="Distance buffer">
@@ -91,6 +109,18 @@ export const BufferPanel = () => {
         {status.state === 'done' && status.notes?.length ? (
           <p className="hint">Fell back: {status.notes.join('; ')}</p>
         ) : null}
+      </div>
+      <div className="control stacked">
+        <button disabled={bench !== null && bench.progress < 1} onClick={benchmark}>
+          Benchmark all backends
+        </button>
+        {bench ? (
+          <p className="hint">
+            {bench.label} · {Math.round(bench.progress * 100)}%
+          </p>
+        ) : (
+          <p className="hint">Times this svg on WebGPU, WebGL2 and the CPU and downloads the results as json.</p>
+        )}
       </div>
     </Section>
   );
