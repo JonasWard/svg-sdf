@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { SdfRenderer } from '../render/renderer';
 import { attachPanZoom, fitView } from '../view/panZoom';
 import { useStore } from './store';
+import { fromRelativeView } from './urlSettings';
 
 /** the live renderer, for exports */
 export let activeRenderer: SdfRenderer | null = null;
@@ -75,12 +76,15 @@ export const SdfCanvas = () => {
     if (view) activeRenderer?.setView(view);
   }, [view]);
 
-  // fit when a buffer for a newly loaded svg arrives, and on explicit requests
+  // fit when a buffer for a newly loaded svg arrives, unless the url holds a view, and on explicit requests
   useEffect(() => {
-    const { fitOnNextSdf, setFitOnNextSdf } = useStore.getState();
+    const { fitOnNextSdf, setFitOnNextSdf, pendingView, setPendingView, setView } = useStore.getState();
     if (!sdf || !fitOnNextSdf) return;
     setFitOnNextSdf(false);
-    fitTo(canvasRef.current!);
+    if (pendingView) {
+      setPendingView(null);
+      setView(fromRelativeView(pendingView, sdf.region, sdf.pixelSize));
+    } else fitTo(canvasRef.current!);
   }, [sdf]);
   useEffect(() => {
     if (fitRequest) fitTo(canvasRef.current!);

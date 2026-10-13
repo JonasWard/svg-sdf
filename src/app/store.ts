@@ -3,6 +3,7 @@ import { CurveMode, DEFAULT_METRIC, MetricSpec, SdfBuffer } from '../lib/types';
 import { Backend, BackendPreference } from '../lib/gpu/computer';
 import { DEFAULT_SETTINGS, PostSettings, View } from '../render/settings';
 import { SAMPLES } from '../samples';
+import type { RelativeView } from './urlSettings';
 
 export interface ComputeSettings {
   /** buffer width in px */
@@ -43,6 +44,8 @@ interface State {
   fitRequest: number;
   /** fit the view once the next buffer arrives, set when a new svg is loaded */
   fitOnNextSdf: boolean;
+  /** a view from the url, applied instead of fitting once the first buffer arrives */
+  pendingView: RelativeView | null;
 
   setSvg: (name: string, text: string) => void;
   setCompute: (patch: Partial<ComputeSettings>) => void;
@@ -53,6 +56,7 @@ interface State {
   setView: (view: View) => void;
   requestFit: () => void;
   setFitOnNextSdf: (fit: boolean) => void;
+  setPendingView: (view: RelativeView | null) => void;
 }
 
 export const DEFAULT_COMPUTE: ComputeSettings = {
@@ -74,8 +78,9 @@ export const useStore = create<State>((set) => ({
   view: null,
   fitRequest: 0,
   fitOnNextSdf: true,
+  pendingView: null,
 
-  setSvg: (svgName, svgText) => set({ svgName, svgText, fitOnNextSdf: true }),
+  setSvg: (svgName, svgText) => set({ svgName, svgText, fitOnNextSdf: true, pendingView: null }),
   setCompute: (patch) => set((s) => ({ compute: { ...s.compute, ...patch } })),
   setStatus: (status) => set({ status }),
   setSdf: (sdf) => set({ sdf }),
@@ -83,5 +88,6 @@ export const useStore = create<State>((set) => ({
   updatePost: (update) => set((s) => ({ post: update(s.post) })),
   setView: (view) => set({ view }),
   requestFit: () => set((s) => ({ fitRequest: s.fitRequest + 1 })),
-  setFitOnNextSdf: (fitOnNextSdf) => set({ fitOnNextSdf })
+  setFitOnNextSdf: (fitOnNextSdf) => set({ fitOnNextSdf }),
+  setPendingView: (pendingView) => set({ pendingView })
 }));

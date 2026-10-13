@@ -5,6 +5,7 @@
     "": {
       "name": "svg-sdf",
       "dependencies": {
+        "densing": "^0.4.4",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "zustand": "^5.0.3",
@@ -260,6 +261,8 @@
     "deep-eql": ["deep-eql@5.0.2", "", {}, "sha512-h5k/5U50IJJFpzfL6nO9jaaumfjO/f2NjK/oYB2Djzm4p9L+3T9qWpZqZ2hAbLPuuYq9wrU08WQyBTL5GbPk5Q=="],
 
     "delayed-stream": ["delayed-stream@1.0.0", "", {}, "sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ=="],
+
+    "densing": ["densing@0.4.4", "", {}, "sha512-LUheWMOS2cwtUo8vSIT9TlTMvtHitKWhTcBR3resDMhVqVP0YF73z7JT9Ly5de9HcjZd0jjjwyKUPpyB9JBfMQ=="],
 
     "dunder-proto": ["dunder-proto@1.0.1", "", { "dependencies": { "call-bind-apply-helpers": "^1.0.1", "es-errors": "^1.3.0", "gopd": "^1.2.0" } }, "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A=="],
 
