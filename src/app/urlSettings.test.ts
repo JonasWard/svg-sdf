@@ -3,6 +3,7 @@ import { PRESETS } from '../render/presets';
 import { DEFAULT_SETTINGS } from '../render/settings';
 import { DEFAULT_COMPUTE } from './store';
 import { decodeSettings, encodeSettings, fromRelativeView, toRelativeView } from './urlSettings';
+import { toUrlSettings } from './renderSettings';
 
 const defaults = { compute: DEFAULT_COMPUTE, post: DEFAULT_SETTINGS, view: null };
 
@@ -42,7 +43,11 @@ describe('url settings', () => {
       encodeSettings({
         ...defaults,
         compute: { ...DEFAULT_COMPUTE, width: 100000, padding: 12.4 },
-        post: { ...DEFAULT_SETTINGS, background: 'red', contours: { ...DEFAULT_SETTINGS.contours, opacity: 0.30000004 } }
+        post: {
+          ...DEFAULT_SETTINGS,
+          background: 'red',
+          contours: { ...DEFAULT_SETTINGS.contours, opacity: 0.30000004 }
+        }
       })
     )!;
     expect(decoded.compute.width).toBe(8192);
@@ -67,5 +72,26 @@ describe('relative view', () => {
     expect(back.cx).toBeCloseTo(view.cx);
     expect(back.cy).toBeCloseTo(view.cy);
     expect(back.scale).toBeCloseTo(view.scale);
+  });
+});
+
+describe('render settings', () => {
+  it('turns a preset with overrides into settings that survive the url', () => {
+    const settings = toUrlSettings({
+      width: 2048,
+      padding: 0.12,
+      preset: 'Polar twilight',
+      post: { polar: { repetitions: 6 }, contours: { spacing: 1.5 } },
+      metric: { kind: 'polygon', sides: 3, angle: 0 }
+    });
+    expect(settings.compute.padding).toBe(12);
+    expect(settings.post.polar.repetitions).toBe(6);
+    expect(settings.post.polar.palette).toBe(PRESETS['Polar twilight'].polar.palette);
+    expect(decodeSettings(encodeSettings(settings))).toEqual(settings);
+  });
+
+  it('gives crops the default padding', () => {
+    const settings = toUrlSettings({ width: 1600, region: { minX: 0, minY: 0, maxX: 1, maxY: 1 } });
+    expect(settings.compute.padding).toBe(DEFAULT_COMPUTE.padding);
   });
 });

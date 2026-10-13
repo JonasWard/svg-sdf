@@ -14,11 +14,10 @@ import {
   toMetricSpec
 } from '../lib/types';
 import { parseColor } from '../lib/svg/color';
-import { PRESETS } from '../render/presets';
 import { SdfRenderer } from '../render/renderer';
-import { DEFAULT_SETTINGS, PostSettings } from '../render/settings';
-import { merge } from './files';
 import { BenchmarkSizes, runBenchmark } from './benchmark';
+import { postSettings, toUrlSettings } from './renderSettings';
+import { decodeSettings, encodeSettings } from './urlSettings';
 
 interface CompareOptions {
   width: number;
@@ -198,9 +197,7 @@ const render = async (svgText: string, options: RenderOptions) => {
     const other = computeBuffer(svgText, options, difference.curves ?? 'polyline', difference.tolerance ?? tolerance);
     sdf = differenceBuffer(other, sdf, difference.max);
   }
-  const base = options.preset ? PRESETS[options.preset] : DEFAULT_SETTINGS;
-  if (!base) throw new Error(`unknown preset ${options.preset}`);
-  const post = merge<PostSettings>(base, options.post);
+  const post = postSettings(options);
 
   renderer ??= new SdfRenderer(document.createElement('canvas'));
   renderer.setSdf(sdf);
@@ -226,6 +223,12 @@ export const installDebug = () => {
     compare,
     render,
     bounds: (svgText: string) => parseSvg(svgText).bounds,
-    benchmark: (svgText: string, sizes?: Partial<BenchmarkSizes>) => runBenchmark(svgText, 'debug', () => {}, sizes)
+    benchmark: (svgText: string, sizes?: Partial<BenchmarkSizes>) => runBenchmark(svgText, 'debug', () => {}, sizes),
+    /** the playground's ?s= string for a render's options, and whether it decodes back to the same settings */
+    settings: (options: RenderOptions) => {
+      const settings = toUrlSettings(options);
+      const text = encodeSettings(settings);
+      return { text, settings, decoded: decodeSettings(text) };
+    }
   };
 };
