@@ -25,7 +25,7 @@ export interface SettingsFile {
 }
 
 /** deep merge onto defaults, so settings files from older versions still load */
-const merge = <T>(base: T, patch: unknown): T => {
+export const merge = <T>(base: T, patch: unknown): T => {
   if (Array.isArray(base) || typeof base !== 'object' || base === null) return (patch ?? base) as T;
   if (typeof patch !== 'object' || patch === null) return base;
   const out = { ...base } as Record<string, unknown>;
