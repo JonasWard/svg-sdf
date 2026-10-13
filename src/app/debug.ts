@@ -83,6 +83,8 @@ interface RenderOptions extends CompareOptions {
   difference?: { curves?: CurveMode; tolerance?: number; max: number };
   /** one shape per subpath of every filled shape, so regions drawn as subpaths of a single path get their own colour */
   splitSubpaths?: boolean;
+  /** a colour of its own for every filled shape, hues a golden angle apart, instead of `regionColors` */
+  uniqueRegionColors?: boolean;
 }
 
 /** the subpath's on-curve points, enough to tell which subpath lies inside which */
@@ -144,13 +146,22 @@ const computeBuffer = (svgText: string, options: RenderOptions, curves: CurveMod
     curves,
     tolerance,
     options.regionColors,
-    options.splitSubpaths
+    options.splitSubpaths,
+    options.uniqueRegionColors
   ]);
   let sdf = buffers.get(key);
   if (!sdf) {
     const geometry = parseSvg(svgText);
     if (options.splitSubpaths) geometry.shapes = geometry.shapes.flatMap(splitShape);
-    if (options.regionColors?.length) {
+    if (options.uniqueRegionColors) {
+      // consecutive shapes land far apart on the colour wheel and no two share a hue
+      let filled = 0;
+      geometry.shapes = geometry.shapes.map((shape) =>
+        shape.fill
+          ? { ...shape, fill: parseColor(`hsl(${(filled++ * 137.508) % 360}, 70%, 55%)`) ?? shape.fill }
+          : shape
+      );
+    } else if (options.regionColors?.length) {
       const colors = options.regionColors;
       geometry.shapes = geometry.shapes.map((shape, i) =>
         shape.fill ? { ...shape, fill: parseColor(colors[i % colors.length]) ?? shape.fill } : shape
