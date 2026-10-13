@@ -3,7 +3,16 @@ import { GpuBackend } from '../lib/gpu/kernel';
 import { computeLayout, computeSdf } from '../lib/sdf/compute';
 import { parseSvg } from '../lib/svg/parse';
 import { flattenGeometry } from '../lib/svg/scene';
-import { Bounds, CurveMode, MetricSpec, SDF_STRIDE, SdfBuffer, toMetricSpec } from '../lib/types';
+import {
+  Bounds,
+  CurveMode,
+  GeometryShape,
+  MetricSpec,
+  SDF_STRIDE,
+  SdfBuffer,
+  Subpath,
+  toMetricSpec
+} from '../lib/types';
 import { parseColor } from '../lib/svg/color';
 import { PRESETS } from '../render/presets';
 import { SdfRenderer } from '../render/renderer';
@@ -72,7 +81,49 @@ interface RenderOptions extends CompareOptions {
    * itself: the difference in buffer px, divided by `max` and clamped, replaces the distance (keeping its sign).
    */
   difference?: { curves?: CurveMode; tolerance?: number; max: number };
+  /** one shape per subpath of every filled shape, so regions drawn as subpaths of a single path get their own colour */
+  splitSubpaths?: boolean;
 }
+
+/** the subpath's on-curve points, enough to tell which subpath lies inside which */
+const outline = (subpath: Subpath) => [[subpath.x, subpath.y], ...subpath.segments.map((s) => [s.x, s.y])];
+
+const contains = (polygon: number[][], [x, y]: number[]) => {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+};
+
+const area = (polygon: number[][]) =>
+  Math.abs(
+    polygon.reduce((a, [x, y], i) => {
+      const [nx, ny] = polygon[(i + 1) % polygon.length];
+      return a + x * ny - nx * y;
+    }, 0)
+  ) / 2;
+
+/**
+ * Splits a filled shape into one shape per subpath. A subpath inside an odd number of others is a hole (or a lake)
+ * and stays with the subpath directly around it, one inside an even number starts a shape of its own (an enclave).
+ */
+const splitShape = (shape: GeometryShape): GeometryShape[] => {
+  if (!shape.fill || shape.subpaths.length < 2) return [shape];
+  const polygons = shape.subpaths.map(outline);
+  const areas = polygons.map(area);
+  const parents = polygons.map((polygon, i) =>
+    polygons.map((_, j) => j).filter((j) => j !== i && areas[j] > areas[i] && contains(polygons[j], polygon[0]))
+  );
+  const groups = new Map<number, Subpath[]>();
+  shape.subpaths.forEach((subpath, i) => {
+    const owner = parents[i].length % 2 === 0 ? i : parents[i].reduce((a, b) => (areas[a] < areas[b] ? a : b));
+    groups.set(owner, [...(groups.get(owner) ?? []), subpath]);
+  });
+  return [...groups.values()].map((subpaths) => ({ ...shape, subpaths }));
+};
 
 let renderer: SdfRenderer | null = null;
 const buffers = new Map<string, SdfBuffer>();
@@ -92,11 +143,13 @@ const computeBuffer = (svgText: string, options: RenderOptions, curves: CurveMod
     sdfOptions,
     curves,
     tolerance,
-    options.regionColors
+    options.regionColors,
+    options.splitSubpaths
   ]);
   let sdf = buffers.get(key);
   if (!sdf) {
     const geometry = parseSvg(svgText);
+    if (options.splitSubpaths) geometry.shapes = geometry.shapes.flatMap(splitShape);
     if (options.regionColors?.length) {
       const colors = options.regionColors;
       geometry.shapes = geometry.shapes.map((shape, i) =>
