@@ -89,6 +89,22 @@ export interface PostSettings {
     width: number;
     color: string;
   };
+  /** a Neovius field added to the distance before colouring, 3(cos x + cos y + cos z) - 4 cos x cos y cos z over 7 */
+  neovius: {
+    enabled: boolean;
+    /** length of one period in x and y */
+    period: number;
+    /** where the z slice is, 0..1 of a period */
+    slice: number;
+    /** how far the field moves the distance at its extremes */
+    amplitude: number;
+    /** only inside the shapes, growing from nothing at the edge to the full field at the fade depth, so edges stay put */
+    insideOnly: boolean;
+    fade: number;
+    /** a gyroid that bends the Neovius cells, shifting them by up to half a period: a strength of 0 leaves them regular */
+    gyroidPeriod: number;
+    gyroidStrength: number;
+  };
 }
 
 /** world position at the canvas centre and world units per css px */
@@ -146,5 +162,15 @@ export const DEFAULT_SETTINGS: PostSettings = {
     inside: true,
     outside: true
   },
-  outline: { enabled: false, width: 3, color: '#ffffff' }
+  outline: { enabled: false, width: 3, color: '#ffffff' },
+  neovius: {
+    enabled: false,
+    period: 10,
+    slice: 0,
+    amplitude: 2,
+    insideOnly: false,
+    fade: 2,
+    gyroidPeriod: 40,
+    gyroidStrength: 0
+  }
 };

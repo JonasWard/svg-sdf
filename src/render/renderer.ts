@@ -50,6 +50,13 @@ const UNIFORMS = [
   'uContourColor',
   'uContourOpacity',
   'uContourSides',
+  'uNeovius',
+  'uNeoviusScale',
+  'uNeoviusSlice',
+  'uNeoviusAmplitude',
+  'uNeoviusFade',
+  'uGyroidScale',
+  'uGyroidStrength',
   'uOutline',
   'uOutlineWidth',
   'uOutlineColor'
@@ -355,6 +362,15 @@ export class SdfRenderer {
     gl.uniform3f(u.uContourColor, ...rgb(c.color));
     gl.uniform1f(u.uContourOpacity, c.opacity);
     gl.uniform2i(u.uContourSides, c.inside ? 1 : 0, c.outside ? 1 : 0);
+
+    const n = s.neovius;
+    gl.uniform1i(u.uNeovius, n.enabled ? 1 : 0);
+    gl.uniform1f(u.uNeoviusScale, (2 * Math.PI) / Math.max(n.period * unit, 1e-9));
+    gl.uniform1f(u.uNeoviusSlice, n.slice * 2 * Math.PI);
+    gl.uniform1f(u.uNeoviusAmplitude, n.amplitude * unit);
+    gl.uniform1f(u.uNeoviusFade, n.insideOnly ? n.fade * unit : 0);
+    gl.uniform1f(u.uGyroidScale, (2 * Math.PI) / Math.max(n.gyroidPeriod * unit, 1e-9));
+    gl.uniform1f(u.uGyroidStrength, n.gyroidStrength);
 
     gl.uniform1i(u.uOutline, s.outline.enabled ? 1 : 0);
     gl.uniform1f(u.uOutlineWidth, s.outline.width);

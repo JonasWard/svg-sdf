@@ -38,6 +38,35 @@ describe('url settings', () => {
     expect(decodeSettings(encodeSettings(settings))).toEqual(settings);
   });
 
+  it('round-trips a neovius field', () => {
+    const settings = {
+      ...defaults,
+      post: {
+        ...DEFAULT_SETTINGS,
+        neovius: {
+          enabled: true,
+          period: 12.5,
+          slice: 0.29,
+          amplitude: 1.5,
+          insideOnly: true,
+          fade: 3,
+          gyroidPeriod: 35,
+          gyroidStrength: 0.4
+        }
+      }
+    };
+    expect(decodeSettings(encodeSettings(settings))).toEqual(settings);
+  });
+
+  it('reads a link from before the neovius field with the field off', () => {
+    // the vibed reused tiled logo on jonasward.ch, encoded before the field existed
+    const old =
+      'J_AeAnMALuABg9vTvIACs6VX0b5vR-jo9P8gAHBYQPqwejv6OK2eh0xQgA9Ggw-ndfxwAHWShatZD1--AChYcPEzKqJgcAAn____kwr___8';
+    const decoded = decodeSettings(old);
+    expect(decoded?.post.neovius).toEqual(DEFAULT_SETTINGS.neovius);
+    expect(decoded?.post.polar.stops[0].color).toBe('#7a3418');
+  });
+
   it('clamps and rounds values that do not fit the schema', () => {
     const decoded = decodeSettings(
       encodeSettings({

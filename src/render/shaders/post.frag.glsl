@@ -55,6 +55,15 @@ uniform vec3 uContourColor;
 uniform float uContourOpacity;
 uniform bvec2 uContourSides; // inside, outside
 
+// a Neovius field added to the distance: scale is radians per world unit, slice the z angle, amplitude in world units
+uniform bool uNeovius;
+uniform float uNeoviusScale;
+uniform float uNeoviusSlice;
+uniform float uNeoviusAmplitude;
+uniform float uNeoviusFade; // world units, 0 applies the field everywhere
+uniform float uGyroidScale; // radians per world unit
+uniform float uGyroidStrength;
+
 uniform bool uOutline;
 uniform float uOutlineWidth;
 uniform vec3 uOutlineColor;
@@ -152,9 +161,30 @@ void main() {
   float d = s.x;
   vec2 gradient = s.yz;
   int shape = int(texel(ivec2(floor(t + 0.5))).w + 0.5);
-  bool inside = d < 0.0;
   float px = uScale;
   float slope = fieldSlope(ivec2(floor(t + 0.5)));
+  if (uNeovius) {
+    // 3(cos x + cos y + cos z) - 4 cos x cos y cos z lies in -7..7, over 7 it moves the distance by at most the amplitude
+    // a gyroid bends the cells: it shifts the phase of the Neovius by up to half a period in x and y
+    vec3 g = vec3(world * uGyroidScale, uNeoviusSlice);
+    float gx = (sin(g.x) * cos(g.y) + sin(g.y) * cos(g.z) + sin(g.z) * cos(g.x)) / 1.5;
+    float gy = (cos(g.x) * sin(g.y) + cos(g.y) * sin(g.z) + cos(g.z) * sin(g.x)) / 1.5;
+    vec2 q = world * uNeoviusScale + 3.14159265 * uGyroidStrength * vec2(gx, gy);
+    vec2 c = cos(q);
+    float cz = cos(uNeoviusSlice);
+    float n = (3.0 * (c.x + c.y + cz) - 4.0 * c.x * c.y * cz) / 7.0;
+    // its gradient per world unit from the screen derivatives, which also follow the gyroid; y points down
+    vec2 dn = vec2(dFdx(n), -dFdy(n)) / uScale;
+    // inside only: nothing at the edge, blending in to the whole field at the fade depth
+    float w = smoothstep(0.0, uNeoviusFade, -d);
+    // squared, so thin parts and the band along the edge keep their outline
+    float amplitude = uNeoviusAmplitude * (uNeoviusFade > 0.0 ? w * w : 1.0);
+    d += amplitude * n;
+    // the direction of the sum, the distance gradient has length 1
+    gradient = (length(gradient) > 1e-9 ? normalize(gradient) : vec2(0.0)) + amplitude * dn;
+    slope += amplitude * length(dn);
+  }
+  bool inside = d < 0.0;
   // world units per unit of distance, per device px
   float pxD = px * slope;
 

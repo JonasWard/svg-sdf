@@ -75,6 +75,7 @@ export const PostPanel = () => {
   const [grayscale, setGrayscale] = useGroup('grayscale');
   const [contours, setContours] = useGroup('contours');
   const [outline, setOutline] = useGroup('outline');
+  const [neovius, setNeovius] = useGroup('neovius');
 
   return (
     <>
@@ -350,6 +351,67 @@ export const PostPanel = () => {
               <Toggle label="Inside" value={contours.inside} onChange={(inside) => setContours({ inside })} />
               <Toggle label="Outside" value={contours.outside} onChange={(outside) => setContours({ outside })} />
             </div>
+          </>
+        )}
+      </Section>
+
+      <Section
+        title="Neovius"
+        aside={<Toggle label="" value={neovius.enabled} onChange={(enabled) => setNeovius({ enabled })} />}
+      >
+        {neovius.enabled && (
+          <>
+            <p className="hint">
+              Adds a slice of a Neovius surface to the distance before it is coloured, so it also moves the edge. A
+              gyroid can bend its cells.
+            </p>
+            <Slider
+              label="Period %"
+              value={neovius.period}
+              min={0.5}
+              max={100}
+              step={0.05}
+              onChange={(period) => setNeovius({ period })}
+            />
+            <Slider label="Slice" value={neovius.slice} min={0} max={1} onChange={(slice) => setNeovius({ slice })} />
+            <Slider
+              label="Amplitude %"
+              value={neovius.amplitude}
+              min={0.05}
+              max={20}
+              step={0.05}
+              onChange={(amplitude) => setNeovius({ amplitude })}
+            />
+            <Toggle
+              label="Inside only"
+              value={neovius.insideOnly}
+              onChange={(insideOnly) => setNeovius({ insideOnly })}
+            />
+            {neovius.insideOnly && (
+              <Slider
+                label="Fade %"
+                value={neovius.fade}
+                min={0.05}
+                max={20}
+                step={0.05}
+                onChange={(fade) => setNeovius({ fade })}
+              />
+            )}
+            <Slider
+              label="Gyroid %"
+              value={neovius.gyroidPeriod}
+              min={0.5}
+              max={100}
+              step={0.05}
+              onChange={(gyroidPeriod) => setNeovius({ gyroidPeriod })}
+            />
+            <Slider
+              label="Gyroid strength"
+              value={neovius.gyroidStrength}
+              min={0}
+              max={1}
+              onChange={(gyroidStrength) => setNeovius({ gyroidStrength })}
+            />
           </>
         )}
       </Section>

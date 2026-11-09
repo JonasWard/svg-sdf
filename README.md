@@ -55,6 +55,8 @@ Every push to the default branch is tested, built and published to GitHub Pages 
    - **Shapes**: the SVG fill of the pixel's shape, shaded by distance.
    - **Raw**: the grey-scale field.
 
+   Before any of these, a slice of a **Neovius** surface, (3(cos x + cos y + cos z) − 4 cos x cos y cos z) / 7, can be added to the distance, with a period, a z slice and an amplitude. It moves the edge as well, so it can cut cells into a shape, or, inside only, it fades in from the edge over a depth and leaves the outlines where they are. A gyroid can bend its cells into freer shapes. The polar direction follows the gradient of the sum.
+
    Contour lines or bands and an outline can be layered on top. Changing a setting only redraws; it never recomputes the buffer.
 
 4. **View** (`src/view`): drag to pan, wheel or pinch to zoom around the cursor, double-click to fit.

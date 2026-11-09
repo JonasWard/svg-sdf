@@ -12,7 +12,7 @@ import {
   undensing
 } from 'densing';
 import { Bounds, MetricKind } from '../lib/types';
-import { MODES, POLAR_PALETTES, PostSettings, View } from '../render/settings';
+import { DEFAULT_SETTINGS, MODES, POLAR_PALETTES, PostSettings, View } from '../render/settings';
 import type { ComputeSettings } from './store';
 
 /**
@@ -121,6 +121,20 @@ export const URL_SCHEMA = schema(
   optional(
     'view',
     object('view', fixed('x', -4, 4, 0.00005), fixed('y', -4, 4, 0.00005), fixed('zoom', -16, 16, 0.01))
+  ),
+  // added after the view: a link from before it ends early, reads as absent and so keeps working
+  optional(
+    'neovius',
+    object(
+      'neovius',
+      fixed('period', 0.5, 100, 0.05),
+      unit('slice'),
+      fixed('amplitude', 0.05, 20, 0.05),
+      bool('insideOnly'),
+      fixed('fade', 0.05, 20, 0.05),
+      fixed('gyroidPeriod', 0.5, 100, 0.05),
+      unit('gyroidStrength')
+    )
   )
 );
 
@@ -186,14 +200,21 @@ const restore = (field: DenseField, value: unknown): unknown => {
 const root = object('root', ...URL_SCHEMA.fields);
 
 export const encodeSettings = ({ compute, post, view }: UrlSettings): string =>
-  densing(URL_SCHEMA, conform(root, { version: VERSION, compute, post, view }));
+  densing(
+    URL_SCHEMA,
+    conform(root, { version: VERSION, compute, post, view, neovius: post.neovius.enabled ? post.neovius : null })
+  );
 
 /** the settings in a string from `encodeSettings`, null for anything else */
 export const decodeSettings = (text: string): UrlSettings | null => {
   try {
-    const data = restore(root, undensing(URL_SCHEMA, text)) as UrlSettings & { version: number };
+    const data = restore(root, undensing(URL_SCHEMA, text)) as UrlSettings & {
+      version: number;
+      neovius: Omit<PostSettings['neovius'], 'enabled'> | null;
+    };
     if (data.version !== VERSION) return null;
-    return { compute: data.compute, post: data.post, view: data.view };
+    const neovius = data.neovius ? { enabled: true, ...data.neovius } : DEFAULT_SETTINGS.neovius;
+    return { compute: data.compute, post: { ...data.post, neovius }, view: data.view };
   } catch {
     return null;
   }
